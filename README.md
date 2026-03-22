@@ -2,6 +2,10 @@
 
 > MCP Server for Shopify that delivers actionable business insights — comparisons, alerts, and recommendations, not just numbers.
 
+## Demo
+
+https://github.com/user-attachments/assets/7aec6034-16fc-4fc8-9427-331f00d13430
+
 ## Why This Exists
 
 Existing Shopify MCP servers return raw data. Shopify Insights MCP answers **"what does it mean?"** and **"what should I do?"**:
