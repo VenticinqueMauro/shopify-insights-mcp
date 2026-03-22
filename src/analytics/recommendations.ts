@@ -1,34 +1,34 @@
-export function generateSalesRecommendations(insights: string[]): string[] {
+import type { SalesSignals } from './insights.js';
+
+export function generateSalesRecommendations(signals: SalesSignals): string[] {
   const recommendations: string[] = [];
 
-  const insightText = insights.join(' ').toLowerCase();
-
-  if (insightText.includes('cayeron') || insightText.includes('disminuyó') || insightText.includes('menos')) {
-    recommendations.push('🎯 Considera lanzar una campaña promocional o descuentos para reactivar las ventas.');
-    recommendations.push('📧 Activa una secuencia de email marketing para clientes inactivos.');
+  if (signals.revenueDown || signals.ordersDown) {
+    recommendations.push('🎯 Consider launching a promotional campaign or discounts to reactivate sales.');
+    recommendations.push('📧 Activate an email marketing sequence targeting inactive customers.');
   }
 
-  if (insightText.includes('ticket promedio bajó') || insightText.includes('upselling')) {
-    recommendations.push('🛍️ Implementa bundles de productos o recomendaciones de cross-sell en el checkout.');
-    recommendations.push('🎁 Ofrece envío gratuito a partir de un monto mínimo para incentivar tickets mayores.');
+  if (signals.aovDown) {
+    recommendations.push('🛍️ Implement product bundles or cross-sell recommendations at checkout.');
+    recommendations.push('🎁 Offer free shipping above a minimum order amount to incentivize higher cart values.');
   }
 
-  if (insightText.includes('crecieron') || insightText.includes('aumentó') || insightText.includes('más')) {
-    recommendations.push('🚀 Aprovecha el momentum positivo aumentando la inversión en los canales de adquisición que mejor funcionan.');
-    recommendations.push('📊 Analiza qué productos o categorías impulsaron el crecimiento para potenciarlos.');
+  if (signals.revenueUp || signals.ordersUp) {
+    recommendations.push('🚀 Capitalize on positive momentum by increasing investment in your best-performing acquisition channels.');
+    recommendations.push('📊 Analyze which products or categories drove growth to amplify them.');
   }
 
-  if (insightText.includes('no se registraron ventas') || insightText.includes('estables')) {
-    recommendations.push('🔍 Revisa los canales de marketing activos y evalúa nuevas fuentes de tráfico.');
-    recommendations.push('💡 Considera realizar pruebas A/B en páginas de producto y el flujo de checkout.');
+  if (signals.noSales || signals.stableRevenue) {
+    recommendations.push('🔍 Review active marketing channels and evaluate new traffic sources.');
+    recommendations.push('💡 Consider running A/B tests on product pages and the checkout flow.');
   }
 
-  if (insightText.includes('volumen de pedidos aumentó')) {
-    recommendations.push('📦 Asegúrate de tener suficiente stock para sostener el crecimiento en la demanda.');
+  if (signals.ordersUp) {
+    recommendations.push('📦 Ensure sufficient stock to sustain growing demand.');
   }
 
   // Always add a general recommendation
-  recommendations.push('📈 Monitorea métricas clave diariamente: tasa de conversión, abandono de carrito y LTV de clientes.');
+  recommendations.push('📈 Monitor key metrics daily: conversion rate, cart abandonment, and customer LTV.');
 
   return recommendations;
 }
