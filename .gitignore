@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.shopify
+
+# Dev/seed utilities (local only)
+seed.mjs
+redistribute-dates.mjs
+get-token.mjs
+shopify.app.toml
+TESTING-SEMANA2.md

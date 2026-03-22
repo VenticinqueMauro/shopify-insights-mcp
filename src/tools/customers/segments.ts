@@ -1,0 +1,190 @@
+import { z } from 'zod';
+import { shopifyQuery } from '../../shopify/client.js';
+import { CUSTOMERS_QUERY } from '../../shopify/queries/customers.js';
+import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
+import {
+  getPeriodDates,
+  buildShopifyDateQuery,
+  formatPeriodLabel,
+} from '../../utils/dates.js';
+import { formatCurrency, formatNumber } from '../../utils/formatting.js';
+import { handleToolError } from '../../utils/errors.js';
+import type { CustomersQueryResult, OrdersQueryResult, ToolResult } from '../../types/shopify.js';
+
+export const customerSegmentsTool = {
+  name: 'get_customer_segments',
+  description:
+    'Segment customers into VIP, Loyal, Returning, New, and Inactive based on order history and spending. Shows distribution and average spend per segment.',
+  inputSchema: {
+    type: 'object' as const,
+    properties: {
+      period: {
+        type: 'string',
+        enum: ['week', 'month', 'custom'],
+        description: 'Period to determine activity (default: month)',
+        default: 'month',
+      },
+      startDate: {
+        type: 'string',
+        format: 'date',
+        description: 'Start date (only for custom period)',
+      },
+      endDate: {
+        type: 'string',
+        format: 'date',
+        description: 'End date (only for custom period)',
+      },
+    },
+    required: [],
+  },
+};
+
+const SegmentsSchema = z.object({
+  period: z.enum(['week', 'month', 'custom']).default('month'),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
+type SegmentName = 'VIP' | 'Loyal' | 'Returning' | 'New' | 'Inactive';
+
+interface SegmentData {
+  name: SegmentName;
+  icon: string;
+  description: string;
+  customers: Array<{ name: string; totalSpent: number; ordersCount: number }>;
+}
+
+export async function handleGetCustomerSegments(args: unknown): Promise<ToolResult> {
+  try {
+    const parsed = SegmentsSchema.parse(args);
+    const { period, startDate, endDate } = parsed;
+
+    const { start, end } = getPeriodDates(period, startDate, endDate);
+    const queryStr = buildShopifyDateQuery(start, end);
+
+    // Fetch customers and period orders in parallel
+    const [customersData, ordersData] = await Promise.all([
+      shopifyQuery<CustomersQueryResult>(CUSTOMERS_QUERY),
+      shopifyQuery<OrdersQueryResult>(ORDERS_BY_DATE_RANGE, { query: queryStr }),
+    ]);
+
+    const customers = customersData.customers.edges;
+    const orders = ordersData.orders.edges;
+
+    if (customers.length === 0) {
+      return {
+        content: [{ type: 'text', text: '👥 SEGMENTACIÓN DE CLIENTES\n\nNo se encontraron clientes.' }],
+      };
+    }
+
+    // Find which customers had orders in the period
+    const activeCustomerIds = new Set<string>();
+    for (const { node: order } of orders) {
+      if (order.customer?.id) {
+        activeCustomerIds.add(order.customer.id);
+      }
+    }
+
+    // Parse customers and determine segments
+    const allCustomers = customers.map(({ node: c }) => {
+      const totalSpent = parseFloat(c.amountSpent.amount);
+      const ordersCount = typeof c.numberOfOrders === 'string' ? parseInt(c.numberOfOrders, 10) : (c.numberOfOrders as unknown as number);
+      return {
+        id: c.id,
+        name: `${c.firstName} ${c.lastName}`.trim() || c.email,
+        totalSpent,
+        ordersCount,
+        currency: c.amountSpent.currencyCode,
+        activeInPeriod: activeCustomerIds.has(c.id),
+      };
+    });
+
+    // Determine VIP threshold: top 10% by totalSpent
+    const sortedBySpend = [...allCustomers].sort((a, b) => b.totalSpent - a.totalSpent);
+    const vipThresholdIdx = Math.max(1, Math.ceil(allCustomers.length * 0.1));
+    const vipThreshold = sortedBySpend[vipThresholdIdx - 1]?.totalSpent ?? 0;
+
+    // Segment assignment
+    const segments: Record<SegmentName, SegmentData> = {
+      VIP:       { name: 'VIP', icon: '👑', description: 'Top 10% por gasto total', customers: [] },
+      Loyal:     { name: 'Loyal', icon: '💎', description: '4+ pedidos', customers: [] },
+      Returning: { name: 'Returning', icon: '🔄', description: '2-3 pedidos', customers: [] },
+      New:       { name: 'New', icon: '🌱', description: '1 pedido', customers: [] },
+      Inactive:  { name: 'Inactive', icon: '💤', description: 'Sin pedidos en el período', customers: [] },
+    };
+
+    for (const c of allCustomers) {
+      const entry = { name: c.name, totalSpent: c.totalSpent, ordersCount: c.ordersCount };
+
+      if (c.totalSpent >= vipThreshold && vipThreshold > 0) {
+        segments.VIP.customers.push(entry);
+      } else if (c.ordersCount >= 4) {
+        segments.Loyal.customers.push(entry);
+      } else if (c.ordersCount >= 2) {
+        segments.Returning.customers.push(entry);
+      } else if (c.ordersCount === 1) {
+        segments.New.customers.push(entry);
+      } else if (!c.activeInPeriod && c.ordersCount > 0) {
+        segments.Inactive.customers.push(entry);
+      } else if (c.ordersCount === 0) {
+        // No orders at all — also inactive
+        segments.Inactive.customers.push(entry);
+      }
+    }
+
+    const currency = allCustomers[0]?.currency ?? 'USD';
+    const periodLabel = formatPeriodLabel(period, start, end);
+    const totalCustomers = allCustomers.length;
+
+    let text = `👥 SEGMENTACIÓN DE CLIENTES - ${periodLabel.toUpperCase()}\n\n`;
+    text += `Total de clientes: ${formatNumber(totalCustomers)}\n`;
+    text += `Clientes activos en el período: ${formatNumber(activeCustomerIds.size)}\n\n`;
+
+    const sep = '─'.repeat(70);
+    text += `${sep}\n`;
+
+    const segmentOrder: SegmentName[] = ['VIP', 'Loyal', 'Returning', 'New', 'Inactive'];
+
+    for (const segName of segmentOrder) {
+      const seg = segments[segName];
+      const count = seg.customers.length;
+      const pct = totalCustomers > 0 ? (count / totalCustomers) * 100 : 0;
+      const avgSpend = count > 0
+        ? seg.customers.reduce((s, c) => s + c.totalSpent, 0) / count
+        : 0;
+
+      text += `\n${seg.icon} ${seg.name} — ${seg.description}\n`;
+      text += `   Clientes: ${formatNumber(count)} (${pct.toFixed(1)}%)\n`;
+      text += `   Gasto promedio: ${formatCurrency(avgSpend, currency)}\n`;
+
+      // Show top 3 in each segment
+      const topInSeg = [...seg.customers].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 3);
+      if (topInSeg.length > 0) {
+        for (const c of topInSeg) {
+          text += `     • ${c.name}: ${formatCurrency(c.totalSpent, currency)} (${formatNumber(c.ordersCount)} pedidos)\n`;
+        }
+      }
+    }
+
+    text += `\n${sep}\n`;
+
+    // Insights
+    const vipRevenue = segments.VIP.customers.reduce((s, c) => s + c.totalSpent, 0);
+    const totalRevenue = allCustomers.reduce((s, c) => s + c.totalSpent, 0);
+    const vipRevPct = totalRevenue > 0 ? (vipRevenue / totalRevenue) * 100 : 0;
+
+    text += `\n💡 Los ${segments.VIP.customers.length} clientes VIP generan el ${vipRevPct.toFixed(1)}% del revenue total.\n`;
+
+    if (segments.Inactive.customers.length > 0) {
+      text += `💡 ${segments.Inactive.customers.length} cliente(s) inactivos — oportunidad de reactivación con campañas.\n`;
+    }
+
+    if (segments.New.customers.length > 0) {
+      text += `💡 ${segments.New.customers.length} cliente(s) nuevos — clave retenerlos con una segunda compra.\n`;
+    }
+
+    return { content: [{ type: 'text', text }] };
+  } catch (error) {
+    return handleToolError(error);
+  }
+}

@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluations>
+  <metadata>
+    <project>Shopify Insights MCP</project>
+    <author>Mauro Venticinque</author>
+    <date>2026-03-22</date>
+    <description>10 escenarios de evaluación para verificar los 10 tools del MVP</description>
+  </metadata>
+
+  <evaluation id="1">
+    <tool>get_sales_summary</tool>
+    <category>Ventas</category>
+    <prompt>¿Cómo van las ventas este mes comparado con el mes anterior?</prompt>
+    <expected_input>{"period": "month", "compareWithPrevious": true}</expected_input>
+    <expected_behavior>
+      - Devuelve revenue, pedidos, ticket promedio y unidades vendidas del mes actual
+      - Incluye comparativa (%) vs. mes anterior
+      - Genera insights automáticos sobre la tendencia
+      - Genera recomendaciones accionables
+    </expected_behavior>
+    <success_criteria>Output incluye métricas actuales, comparativas con %, insights y recomendaciones</success_criteria>
+  </evaluation>
+
+  <evaluation id="2">
+    <tool>get_sales_comparison</tool>
+    <category>Ventas</category>
+    <prompt>Compara las ventas de la primera quincena de marzo con la segunda quincena de febrero</prompt>
+    <expected_input>{"startDate1": "2026-03-01", "endDate1": "2026-03-15", "startDate2": "2026-02-15", "endDate2": "2026-02-28"}</expected_input>
+    <expected_behavior>
+      - Muestra métricas de ambos períodos lado a lado
+      - Calcula diferencias absolutas y porcentuales
+      - Identifica qué período tuvo mejor rendimiento
+    </expected_behavior>
+    <success_criteria>Dos períodos comparados con métricas, diferencias y dirección del cambio</success_criteria>
+  </evaluation>
+
+  <evaluation id="3">
+    <tool>get_revenue_breakdown</tool>
+    <category>Ventas</category>
+    <prompt>¿Cuáles son mis productos más vendidos este mes por revenue?</prompt>
+    <expected_input>{"period": "month", "dimension": "product"}</expected_input>
+    <expected_behavior>
+      - Desglosa revenue por producto
+      - Ordena de mayor a menor revenue
+      - Muestra porcentaje de contribución de cada producto
+    </expected_behavior>
+    <success_criteria>Lista de productos ordenados por revenue con % de contribución al total</success_criteria>
+  </evaluation>
+
+  <evaluation id="4">
+    <tool>get_product_performance</tool>
+    <category>Productos</category>
+    <prompt>Dame un ranking de mis productos por unidades vendidas en los últimos 7 días</prompt>
+    <expected_input>{"period": "week", "metric": "units", "limit": 10}</expected_input>
+    <expected_behavior>
+      - Ranking de productos por unidades vendidas
+      - Incluye revenue asociado a cada producto
+      - Limitado a top N productos
+    </expected_behavior>
+    <success_criteria>Lista ordenada de productos con unidades vendidas y revenue, limitada al top solicitado</success_criteria>
+  </evaluation>
+
+  <evaluation id="5">
+    <tool>get_inventory_alerts</tool>
+    <category>Productos</category>
+    <prompt>¿Tengo productos con problemas de stock?</prompt>
+    <expected_input>{"criticalThreshold": 10}</expected_input>
+    <expected_behavior>
+      - Identifica productos sin stock (0 unidades)
+      - Identifica productos con stock bajo (&lt; threshold)
+      - Muestra resumen con conteos por categoría de alerta
+      - Genera recomendaciones de reposición
+    </expected_behavior>
+    <success_criteria>Alertas clasificadas por severidad (agotado, bajo, sobrestock) con recomendaciones</success_criteria>
+  </evaluation>
+
+  <evaluation id="6">
+    <tool>get_trending_products</tool>
+    <category>Productos</category>
+    <prompt>¿Qué productos están en tendencia esta semana?</prompt>
+    <expected_input>{"period": "week"}</expected_input>
+    <expected_behavior>
+      - Compara ventas del período actual vs. anterior
+      - Clasifica productos como subiendo, bajando o estables
+      - Muestra % de crecimiento/caída por producto
+    </expected_behavior>
+    <success_criteria>Productos clasificados por tendencia con % de cambio vs. período anterior</success_criteria>
+  </evaluation>
+
+  <evaluation id="7">
+    <tool>get_customer_segments</tool>
+    <category>Clientes</category>
+    <prompt>¿Cómo están segmentados mis clientes? ¿Hay alguno en riesgo?</prompt>
+    <expected_input>{"vipThreshold": 50000, "inactiveDays": 30}</expected_input>
+    <expected_behavior>
+      - Segmenta clientes en: VIP, Leales, Retornantes, Nuevos, Inactivos
+      - Muestra conteo y valor de cada segmento
+      - Identifica clientes VIP inactivos (en riesgo)
+      - Genera insights y recomendaciones por segmento
+    </expected_behavior>
+    <success_criteria>Segmentos con conteos, valores y alertas de clientes en riesgo</success_criteria>
+  </evaluation>
+
+  <evaluation id="8">
+    <tool>get_top_customers</tool>
+    <category>Clientes</category>
+    <prompt>¿Quiénes son mis mejores clientes por monto gastado?</prompt>
+    <expected_input>{"metric": "spent", "limit": 5}</expected_input>
+    <expected_behavior>
+      - Ranking de clientes por gasto total (lifetime value)
+      - Incluye nombre, email, cantidad de pedidos y monto total
+      - Limitado al top N solicitado
+    </expected_behavior>
+    <success_criteria>Lista ordenada de clientes con nombre, pedidos y LTV</success_criteria>
+  </evaluation>
+
+  <evaluation id="9">
+    <tool>get_order_alerts</tool>
+    <category>Operaciones</category>
+    <prompt>¿Hay pedidos que necesiten atención urgente?</prompt>
+    <expected_input>{"pendingDaysThreshold": 3, "highValueThreshold": 50000, "lookbackDays": 30}</expected_input>
+    <expected_behavior>
+      - Identifica pedidos con fulfillment demorado (&gt; N días)
+      - Detecta problemas financieros (reembolsos, anulaciones)
+      - Señala pedidos de alto valor pendientes de envío
+      - Genera insights y recomendaciones operativas
+    </expected_behavior>
+    <success_criteria>Alertas clasificadas en 3 categorías con insights y recomendaciones</success_criteria>
+  </evaluation>
+
+  <evaluation id="10">
+    <tool>get_fulfillment_metrics</tool>
+    <category>Operaciones</category>
+    <prompt>¿Cuál es el estado operativo de mis pedidos este mes?</prompt>
+    <expected_input>{"period": "month"}</expected_input>
+    <expected_behavior>
+      - Desglose por estado de fulfillment (enviado, sin enviar, parcial)
+      - Desglose por estado financiero (pagado, pendiente, reembolsado)
+      - Score de salud operativa (0-100)
+      - Barras visuales de proporción por estado
+      - Insights y recomendaciones operativas
+    </expected_behavior>
+    <success_criteria>Breakdowns con barras visuales, score de salud, insights y recomendaciones</success_criteria>
+  </evaluation>
+</evaluations>

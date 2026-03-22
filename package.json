@@ -1,0 +1,24 @@
+{
+  "name": "shopify-insights-mcp",
+  "version": "1.0.0",
+  "description": "Shopify Analytics & Business Intelligence MCP Server",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0",
+    "node-fetch": "^3.3.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "ts-node": "^10.9.0"
+  },
+  "type": "module"
+}
