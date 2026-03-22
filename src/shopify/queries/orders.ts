@@ -1,6 +1,10 @@
 export const ORDERS_BY_DATE_RANGE = `
-  query GetOrdersByDateRange($query: String!) {
-    orders(first: 250, query: $query) {
+  query GetOrdersByDateRange($query: String!, $cursor: String) {
+    orders(first: 250, query: $query, after: $cursor) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       edges {
         node {
           id

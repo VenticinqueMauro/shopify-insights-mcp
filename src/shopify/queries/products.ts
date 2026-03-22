@@ -1,6 +1,10 @@
 export const PRODUCTS_QUERY = `
-  query GetProducts($query: String) {
-    products(first: 250, query: $query) {
+  query GetProducts($query: String, $cursor: String) {
+    products(first: 250, query: $query, after: $cursor) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       edges {
         node {
           id

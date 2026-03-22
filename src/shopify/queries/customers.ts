@@ -1,6 +1,10 @@
 export const CUSTOMERS_QUERY = `
-  query GetCustomers($query: String) {
-    customers(first: 250, query: $query) {
+  query GetCustomers($query: String, $cursor: String) {
+    customers(first: 250, query: $query, after: $cursor) {
+      pageInfo {
+        hasNextPage
+        endCursor
+      }
       edges {
         node {
           id
