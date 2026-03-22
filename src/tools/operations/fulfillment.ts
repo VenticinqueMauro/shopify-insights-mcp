@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import { getPeriodDates, buildShopifyDateQuery, formatPeriodLabel, type Period } from '../../utils/dates.js';
 import { formatCurrency, formatPercentage, formatNumber } from '../../utils/formatting.js';
@@ -47,6 +47,14 @@ interface StatusCount {
   percentage: number;
 }
 
+interface FulfillmentSignals {
+  lowFulfillmentRate: boolean;     // fulfillmentRate < 70
+  mediumFulfillmentRate: boolean;  // fulfillmentRate >= 70 && < 90
+  highFulfillmentRate: boolean;    // fulfillmentRate >= 90
+  hasRefunds: boolean;             // refundCount > 0
+  hasLowPaymentRate: boolean;      // paidRate < 80
+}
+
 function buildStatusBreakdown(orders: ShopifyOrder[], getter: (o: ShopifyOrder['node']) => string | null): StatusCount[] {
   const map = new Map<string, { count: number; revenue: number }>();
 
@@ -74,101 +82,124 @@ function buildStatusBreakdown(orders: ShopifyOrder[], getter: (o: ShopifyOrder['
 }
 
 const fulfillmentLabels: Record<string, string> = {
-  FULFILLED: 'Enviado',
-  UNFULFILLED: 'Sin enviar',
-  PARTIALLY_FULFILLED: 'Envío parcial',
-  UNKNOWN: 'Sin estado',
+  FULFILLED: 'Shipped',
+  UNFULFILLED: 'Unfulfilled',
+  PARTIALLY_FULFILLED: 'Partially Fulfilled',
+  UNKNOWN: 'Unknown',
 };
 
 const financialLabels: Record<string, string> = {
-  PAID: 'Pagado',
-  PENDING: 'Pago pendiente',
-  REFUNDED: 'Reembolsado',
-  PARTIALLY_REFUNDED: 'Reembolso parcial',
-  VOIDED: 'Anulado',
-  AUTHORIZED: 'Autorizado',
-  PARTIALLY_PAID: 'Pago parcial',
-  UNKNOWN: 'Sin estado',
+  PAID: 'Paid',
+  PENDING: 'Pending',
+  REFUNDED: 'Refunded',
+  PARTIALLY_REFUNDED: 'Partially Refunded',
+  VOIDED: 'Voided',
+  AUTHORIZED: 'Authorized',
+  PARTIALLY_PAID: 'Partially Paid',
+  UNKNOWN: 'Unknown',
 };
+
+interface FulfillmentInsightResult {
+  insights: string[];
+  signals: FulfillmentSignals;
+}
 
 function generateFulfillmentInsights(
   orders: ShopifyOrder[],
   fulfillmentBreakdown: StatusCount[],
   financialBreakdown: StatusCount[]
-): string[] {
+): FulfillmentInsightResult {
   const insights: string[] = [];
   const total = orders.length;
 
   if (total === 0) {
-    insights.push('No se encontraron pedidos en el período seleccionado.');
-    return insights;
+    insights.push('No orders found in the selected period.');
+    const signals: FulfillmentSignals = {
+      lowFulfillmentRate: false,
+      mediumFulfillmentRate: false,
+      highFulfillmentRate: false,
+      hasRefunds: false,
+      hasLowPaymentRate: false,
+    };
+    return { insights, signals };
   }
 
-  // Fulfillment rate
+  // Compute rates
   const fulfilled = fulfillmentBreakdown.find((s) => s.status === 'FULFILLED');
   const fulfillmentRate = fulfilled ? (fulfilled.count / total) * 100 : 0;
 
-  if (fulfillmentRate >= 90) {
-    insights.push(`Excelente tasa de fulfillment: ${fulfillmentRate.toFixed(1)}% de pedidos enviados.`);
-  } else if (fulfillmentRate >= 70) {
-    insights.push(`Tasa de fulfillment aceptable: ${fulfillmentRate.toFixed(1)}%. Hay margen de mejora.`);
+  const paid = financialBreakdown.find((s) => s.status === 'PAID');
+  const paidRate = paid ? (paid.count / total) * 100 : 0;
+
+  const refunded = financialBreakdown.filter((s) =>
+    s.status === 'REFUNDED' || s.status === 'PARTIALLY_REFUNDED'
+  );
+  const refundCount = refunded.reduce((sum, s) => sum + s.count, 0);
+
+  // STEP 1: Set ALL signals BEFORE building strings
+  const signals: FulfillmentSignals = {
+    lowFulfillmentRate: fulfillmentRate < 70,
+    mediumFulfillmentRate: fulfillmentRate >= 70 && fulfillmentRate < 90,
+    highFulfillmentRate: fulfillmentRate >= 90,
+    hasRefunds: refundCount > 0,
+    hasLowPaymentRate: paidRate < 80,
+  };
+
+  // STEP 2: Build English insight strings
+  if (signals.highFulfillmentRate) {
+    insights.push(`Excellent fulfillment rate: ${fulfillmentRate.toFixed(1)}% of orders shipped.`);
+  } else if (signals.mediumFulfillmentRate) {
+    insights.push(`Acceptable fulfillment rate: ${fulfillmentRate.toFixed(1)}%. There is room for improvement.`);
   } else {
-    insights.push(`Tasa de fulfillment baja: ${fulfillmentRate.toFixed(1)}%. Requiere atención urgente.`);
+    insights.push(`Low fulfillment rate: ${fulfillmentRate.toFixed(1)}%. Requires immediate attention.`);
   }
 
   // Unfulfilled orders
   const unfulfilled = fulfillmentBreakdown.find((s) => s.status === 'UNFULFILLED' || s.status === 'UNKNOWN');
   if (unfulfilled && unfulfilled.count > 0) {
-    insights.push(`${unfulfilled.count} pedido(s) pendientes de envío (${unfulfilled.percentage.toFixed(1)}% del total).`);
+    insights.push(`${unfulfilled.count} order(s) pending fulfillment (${unfulfilled.percentage.toFixed(1)}% of total).`);
   }
 
   // Financial health
-  const paid = financialBreakdown.find((s) => s.status === 'PAID');
-  const paidRate = paid ? (paid.count / total) * 100 : 0;
-  if (paidRate < 80) {
-    insights.push(`Solo el ${paidRate.toFixed(1)}% de los pedidos están completamente pagados — revisar pagos pendientes.`);
+  if (signals.hasLowPaymentRate) {
+    insights.push(`Only ${paidRate.toFixed(1)}% of orders are fully paid — review pending payments.`);
   }
 
   // Refunds
-  const refunded = financialBreakdown.filter((s) =>
-    s.status === 'REFUNDED' || s.status === 'PARTIALLY_REFUNDED'
-  );
-  const refundCount = refunded.reduce((sum, s) => sum + s.count, 0);
-  if (refundCount > 0) {
+  if (signals.hasRefunds) {
     const refundRate = (refundCount / total) * 100;
-    insights.push(`Tasa de reembolsos: ${refundRate.toFixed(1)}% (${refundCount} pedidos).`);
+    insights.push(`Refund rate: ${refundRate.toFixed(1)}% (${refundCount} orders).`);
   }
 
-  return insights;
+  return { insights, signals };
 }
 
-function generateFulfillmentRecommendations(insights: string[]): string[] {
+function generateFulfillmentRecommendations(signals: FulfillmentSignals): string[] {
   const recs: string[] = [];
-  const text = insights.join(' ').toLowerCase();
 
-  if (text.includes('baja') || text.includes('urgente')) {
-    recs.push('Revisa el pipeline de fulfillment — identifica cuellos de botella en el proceso de envío.');
-    recs.push('Considera automatizar notificaciones al equipo de logística para pedidos pendientes.');
+  if (signals.lowFulfillmentRate) {
+    recs.push('Review the fulfillment pipeline — identify bottlenecks in the shipping process.');
+    recs.push('Consider automating notifications to the logistics team for pending orders.');
   }
 
-  if (text.includes('margen de mejora')) {
-    recs.push('Establece SLAs de fulfillment (ej: enviar en <48h) y monitorea el cumplimiento.');
+  if (signals.mediumFulfillmentRate) {
+    recs.push('Set fulfillment SLAs (e.g., ship within 48h) and monitor compliance.');
   }
 
-  if (text.includes('reembolsos')) {
-    recs.push('Analiza las razones de reembolso — pueden indicar problemas con la calidad del producto o descripciones inexactas.');
+  if (signals.hasRefunds) {
+    recs.push('Analyze refund reasons — they may indicate product quality issues or inaccurate descriptions.');
   }
 
-  if (text.includes('pagos pendientes')) {
-    recs.push('Configura recordatorios automáticos de pago para pedidos con cobro pendiente.');
+  if (signals.hasLowPaymentRate) {
+    recs.push('Set up automatic payment reminders for orders with pending charges.');
   }
 
-  if (text.includes('excelente')) {
-    recs.push('Mantén el rendimiento actual. Considera optimizar tiempos de entrega como siguiente paso.');
+  if (signals.highFulfillmentRate) {
+    recs.push('Maintain current performance. Consider optimizing delivery times as a next step.');
   }
 
   if (recs.length === 0) {
-    recs.push('Monitorea estas métricas semanalmente para detectar tendencias tempranas.');
+    recs.push('Monitor these metrics weekly to detect trends early.');
   }
 
   return recs;
@@ -181,8 +212,11 @@ export async function handleGetFulfillmentMetrics(args: unknown): Promise<ToolRe
 
     const { start, end } = getPeriodDates(period as Period, startDate, endDate);
     const queryStr = buildShopifyDateQuery(start, end);
-    const data = await shopifyQuery<OrdersQueryResult>(ORDERS_BY_DATE_RANGE, { query: queryStr });
-    const orders = data.orders.edges;
+    const { edges: orders, truncated } = await fetchAllPages(
+      ORDERS_BY_DATE_RANGE,
+      { query: queryStr },
+      (data) => (data as OrdersQueryResult).orders
+    );
 
     const periodLabel = formatPeriodLabel(period as Period, start, end);
 
@@ -195,15 +229,15 @@ export async function handleGetFulfillmentMetrics(args: unknown): Promise<ToolRe
       (sum, { node }) => sum + parseFloat(node.totalPriceSet.shopMoney.amount),
       0
     );
-    const currency = orders.length > 0 ? orders[0].node.totalPriceSet.shopMoney.currencyCode : 'ARS';
+    const currency = orders.length > 0 ? orders[0].node.totalPriceSet.shopMoney.currencyCode : 'USD';
     const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
 
-    let text = `📦 MÉTRICAS OPERATIVAS - ${periodLabel.toUpperCase()}\n`;
-    text += `${formatNumber(orders.length)} pedidos | ${formatCurrency(totalRevenue, currency)} revenue | AOV: ${formatCurrency(avgOrderValue, currency)}\n`;
+    let text = `📦 OPERATIONAL METRICS - ${periodLabel.toUpperCase()}\n`;
+    text += `${formatNumber(orders.length)} orders | ${formatCurrency(totalRevenue, currency)} revenue | AOV: ${formatCurrency(avgOrderValue, currency)}\n`;
     text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     // Fulfillment breakdown
-    text += `📤 ESTADO DE ENVÍO:\n`;
+    text += `📤 FULFILLMENT STATUS:\n`;
     for (const s of fulfillmentBreakdown) {
       const label = fulfillmentLabels[s.status] || s.status;
       const bar = '█'.repeat(Math.max(1, Math.round(s.percentage / 5)));
@@ -211,7 +245,7 @@ export async function handleGetFulfillmentMetrics(args: unknown): Promise<ToolRe
     }
 
     // Financial breakdown
-    text += `\n💳 ESTADO FINANCIERO:\n`;
+    text += `\n💳 FINANCIAL STATUS:\n`;
     for (const s of financialBreakdown) {
       const label = financialLabels[s.status] || s.status;
       const bar = '█'.repeat(Math.max(1, Math.round(s.percentage / 5)));
@@ -219,29 +253,33 @@ export async function handleGetFulfillmentMetrics(args: unknown): Promise<ToolRe
     }
 
     // Operational health score
-    const fulfilled = fulfillmentBreakdown.find((s) => s.status === 'FULFILLED');
-    const fulfillmentRate = orders.length > 0 && fulfilled ? (fulfilled.count / orders.length) * 100 : 0;
-    const paid = financialBreakdown.find((s) => s.status === 'PAID');
-    const paidRate = orders.length > 0 && paid ? (paid.count / orders.length) * 100 : 0;
+    const fulfilledEntry = fulfillmentBreakdown.find((s) => s.status === 'FULFILLED');
+    const fulfillmentRate = orders.length > 0 && fulfilledEntry ? (fulfilledEntry.count / orders.length) * 100 : 0;
+    const paidEntry = financialBreakdown.find((s) => s.status === 'PAID');
+    const paidRate = orders.length > 0 && paidEntry ? (paidEntry.count / orders.length) * 100 : 0;
     const healthScore = (fulfillmentRate * 0.6 + paidRate * 0.4);
 
-    text += `\n🏥 SALUD OPERATIVA:\n`;
-    text += `  • Tasa de fulfillment: ${formatPercentage(fulfillmentRate).replace('+', '')}\n`;
-    text += `  • Tasa de cobro: ${formatPercentage(paidRate).replace('+', '')}\n`;
-    text += `  • Score general: ${healthScore.toFixed(0)}/100 ${healthScore >= 80 ? '🟢' : healthScore >= 60 ? '🟡' : '🔴'}\n`;
+    text += `\n🏥 OPERATIONAL HEALTH:\n`;
+    text += `  • Fulfillment rate: ${formatPercentage(fulfillmentRate).replace('+', '')}\n`;
+    text += `  • Payment rate: ${formatPercentage(paidRate).replace('+', '')}\n`;
+    text += `  • Overall score: ${healthScore.toFixed(0)}/100 ${healthScore >= 80 ? '🟢' : healthScore >= 60 ? '🟡' : '🔴'}\n`;
 
     // Insights
-    const insights = generateFulfillmentInsights(orders, fulfillmentBreakdown, financialBreakdown);
+    const { insights, signals } = generateFulfillmentInsights(orders, fulfillmentBreakdown, financialBreakdown);
     text += `\n💡 INSIGHTS:\n`;
     for (const insight of insights) {
       text += `• ${insight}\n`;
     }
 
     // Recommendations
-    const recs = generateFulfillmentRecommendations(insights);
-    text += `\n📋 RECOMENDACIONES:\n`;
+    const recs = generateFulfillmentRecommendations(signals);
+    text += `\n📋 RECOMMENDATIONS:\n`;
     for (const rec of recs) {
       text += `• ${rec}\n`;
+    }
+
+    if (truncated) {
+      text += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return { content: [{ type: 'text', text }] };

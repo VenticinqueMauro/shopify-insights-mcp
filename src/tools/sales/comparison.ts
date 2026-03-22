@@ -1,10 +1,11 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import { buildShopifyDateQuery } from '../../utils/dates.js';
 import { formatCurrency, formatPercentage, formatNumber, formatCurrencyChange } from '../../utils/formatting.js';
 import { handleToolError } from '../../utils/errors.js';
 import { calculateChange } from '../../analytics/comparisons.js';
+import type { OrdersQueryResult, ShopifyOrder } from '../../types/shopify.js';
 
 // Tool definition
 export const salesComparisonTool = {
@@ -17,8 +18,8 @@ export const salesComparisonTool = {
       period1End: { type: 'string', format: 'date', description: 'End date for period 1' },
       period2Start: { type: 'string', format: 'date', description: 'Start date for period 2' },
       period2End: { type: 'string', format: 'date', description: 'End date for period 2' },
-      period1Label: { type: 'string', description: 'Label for period 1 (default: "Período 1")' },
-      period2Label: { type: 'string', description: 'Label for period 2 (default: "Período 2")' },
+      period1Label: { type: 'string', description: 'Label for period 1 (default: "Period 1")' },
+      period2Label: { type: 'string', description: 'Label for period 2 (default: "Period 2")' },
     },
     required: ['period1Start', 'period1End', 'period2Start', 'period2End'],
   },
@@ -30,39 +31,9 @@ const SalesComparisonSchema = z.object({
   period1End: z.string(),
   period2Start: z.string(),
   period2End: z.string(),
-  period1Label: z.string().default('Período 1'),
-  period2Label: z.string().default('Período 2'),
+  period1Label: z.string().default('Period 1'),
+  period2Label: z.string().default('Period 2'),
 });
-
-// Shopify types
-interface ShopifyMoney {
-  amount: string;
-  currencyCode: string;
-}
-
-interface ShopifyLineItem {
-  node: {
-    quantity: number;
-    originalUnitPriceSet: { shopMoney: ShopifyMoney };
-    product: { id: string; title: string; vendor: string; productType: string } | null;
-  };
-}
-
-interface ShopifyOrder {
-  node: {
-    id: string;
-    name: string;
-    processedAt: string;
-    totalPriceSet: { shopMoney: ShopifyMoney };
-    lineItems: { edges: ShopifyLineItem[] };
-    financialStatus: string;
-    fulfillmentStatus: string | null;
-  };
-}
-
-interface OrdersQueryResult {
-  orders: { edges: ShopifyOrder[] };
-}
 
 interface PeriodMetrics {
   revenue: number;
@@ -91,12 +62,16 @@ function calculateMetrics(orders: ShopifyOrder[]): PeriodMetrics {
   return { revenue, orders: orderCount, averageOrderValue, itemsSold, currency };
 }
 
-async function fetchOrders(startStr: string, endStr: string): Promise<ShopifyOrder[]> {
+async function fetchOrders(startStr: string, endStr: string): Promise<{ orders: ShopifyOrder[]; truncated: boolean }> {
   const start = new Date(`${startStr}T00:00:00.000Z`);
   const end = new Date(`${endStr}T23:59:59.999Z`);
   const queryStr = buildShopifyDateQuery(start, end);
-  const data = await shopifyQuery<OrdersQueryResult>(ORDERS_BY_DATE_RANGE, { query: queryStr });
-  return data.orders.edges;
+  const { edges, truncated } = await fetchAllPages(
+    ORDERS_BY_DATE_RANGE,
+    { query: queryStr },
+    (data) => (data as OrdersQueryResult).orders
+  );
+  return { orders: edges, truncated };
 }
 
 export async function handleGetSalesComparison(args: unknown): Promise<{
@@ -108,13 +83,14 @@ export async function handleGetSalesComparison(args: unknown): Promise<{
     const { period1Start, period1End, period2Start, period2End, period1Label, period2Label } = parsed;
 
     // Fetch both periods in parallel
-    const [p1Orders, p2Orders] = await Promise.all([
+    const [p1Result, p2Result] = await Promise.all([
       fetchOrders(period1Start, period1End),
       fetchOrders(period2Start, period2End),
     ]);
 
-    const p1 = calculateMetrics(p1Orders);
-    const p2 = calculateMetrics(p2Orders);
+    const p1 = calculateMetrics(p1Result.orders);
+    const p2 = calculateMetrics(p2Result.orders);
+    const anyTruncated = p1Result.truncated || p2Result.truncated;
     const currency = p1.currency;
 
     const revenueChange = calculateChange(p2.revenue, p1.revenue);
@@ -124,10 +100,10 @@ export async function handleGetSalesComparison(args: unknown): Promise<{
 
     const col1 = period1Label;
     const col2 = period2Label;
-    const changeLabel = 'Variación';
+    const changeLabel = 'Change';
 
     // Build comparison table
-    let text = `📊 COMPARACIÓN DE VENTAS\n`;
+    let text = `📊 SALES COMPARISON\n`;
     text += `${col1}: ${period1Start} → ${period1End}\n`;
     text += `${col2}: ${period2Start} → ${period2End}\n\n`;
 
@@ -141,33 +117,37 @@ export async function handleGetSalesComparison(args: unknown): Promise<{
       change: string
     ) => `${label.padEnd(22)} ${v1.padStart(14)} ${v2.padStart(14)} ${change.padStart(10)}\n`;
 
-    text += row('MÉTRICA', col1.slice(0, 14), col2.slice(0, 14), changeLabel);
+    text += row('METRIC', col1.slice(0, 14), col2.slice(0, 14), changeLabel);
     text += `${sep}\n`;
     text += row('Revenue', formatCurrency(p1.revenue, currency), formatCurrency(p2.revenue, currency), formatPercentage(revenueChange.percentage));
-    text += row('Pedidos', formatNumber(p1.orders), formatNumber(p2.orders), formatPercentage(ordersChange.percentage));
-    text += row('Ticket promedio', formatCurrency(p1.averageOrderValue, currency), formatCurrency(p2.averageOrderValue, currency), formatPercentage(aovChange.percentage));
-    text += row('Unidades vendidas', formatNumber(p1.itemsSold), formatNumber(p2.itemsSold), formatPercentage(itemsChange.percentage));
+    text += row('Orders', formatNumber(p1.orders), formatNumber(p2.orders), formatPercentage(ordersChange.percentage));
+    text += row('Avg order value', formatCurrency(p1.averageOrderValue, currency), formatCurrency(p2.averageOrderValue, currency), formatPercentage(aovChange.percentage));
+    text += row('Units sold', formatNumber(p1.itemsSold), formatNumber(p2.itemsSold), formatPercentage(itemsChange.percentage));
     text += `${sep}\n`;
 
-    text += `\n📈 ANÁLISIS:\n`;
+    text += `\n📈 ANALYSIS:\n`;
 
     if (revenueChange.direction === 'up') {
-      text += `• El revenue de ${col2} fue ${formatPercentage(revenueChange.percentage)} mayor (${formatCurrencyChange(revenueChange.value, currency)}).\n`;
+      text += `• Revenue in ${col2} was ${formatPercentage(revenueChange.percentage)} higher (${formatCurrencyChange(revenueChange.value, currency)}).\n`;
     } else if (revenueChange.direction === 'down') {
-      text += `• El revenue de ${col2} fue ${formatPercentage(revenueChange.percentage)} menor (${formatCurrencyChange(revenueChange.value, currency)}).\n`;
+      text += `• Revenue in ${col2} was ${formatPercentage(revenueChange.percentage)} lower (${formatCurrencyChange(revenueChange.value, currency)}).\n`;
     } else {
-      text += `• El revenue se mantuvo estable entre ambos períodos.\n`;
+      text += `• Revenue remained stable between both periods.\n`;
     }
 
     if (ordersChange.direction !== 'flat') {
-      const dir = ordersChange.direction === 'up' ? 'más' : 'menos';
-      text += `• Se procesaron ${formatNumber(Math.abs(ordersChange.value))} pedidos ${dir} en ${col2}.\n`;
+      const dir = ordersChange.direction === 'up' ? 'more' : 'fewer';
+      text += `• ${formatNumber(Math.abs(ordersChange.value))} ${dir} orders processed in ${col2}.\n`;
     }
 
     if (aovChange.direction === 'up') {
-      text += `• El ticket promedio creció ${formatPercentage(aovChange.percentage)} — los clientes gastaron más por pedido.\n`;
+      text += `• Average order value grew ${formatPercentage(aovChange.percentage)} — customers spent more per order.\n`;
     } else if (aovChange.direction === 'down') {
-      text += `• El ticket promedio bajó ${formatPercentage(Math.abs(aovChange.percentage))} — considera estrategias de upselling.\n`;
+      text += `• Average order value dropped ${formatPercentage(Math.abs(aovChange.percentage))} — consider upselling strategies.\n`;
+    }
+
+    if (anyTruncated) {
+      text += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return {

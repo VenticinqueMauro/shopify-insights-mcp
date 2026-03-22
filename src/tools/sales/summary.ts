@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import {
   getPeriodDates,
@@ -13,6 +13,7 @@ import { handleToolError } from '../../utils/errors.js';
 import { calculateChange } from '../../analytics/comparisons.js';
 import { generateSalesInsights, type SalesMetrics } from '../../analytics/insights.js';
 import { generateSalesRecommendations } from '../../analytics/recommendations.js';
+import type { OrdersQueryResult, ShopifyOrder } from '../../types/shopify.js';
 
 // Tool definition
 export const salesSummaryTool = {
@@ -54,36 +55,6 @@ const SalesSummarySchema = z.object({
   compareWithPrevious: z.boolean().default(true),
 });
 
-// Shopify order response types
-interface ShopifyMoney {
-  amount: string;
-  currencyCode: string;
-}
-
-interface ShopifyLineItem {
-  node: {
-    quantity: number;
-    originalUnitPriceSet: { shopMoney: ShopifyMoney };
-    product: { id: string; title: string; vendor: string; productType: string } | null;
-  };
-}
-
-interface ShopifyOrder {
-  node: {
-    id: string;
-    name: string;
-    processedAt: string;
-    totalPriceSet: { shopMoney: ShopifyMoney };
-    lineItems: { edges: ShopifyLineItem[] };
-    financialStatus: string;
-    fulfillmentStatus: string | null;
-  };
-}
-
-interface OrdersQueryResult {
-  orders: { edges: ShopifyOrder[] };
-}
-
 function calculateMetrics(orders: ShopifyOrder[]): SalesMetrics & { currency: string } {
   let revenue = 0;
   let itemsSold = 0;
@@ -103,10 +74,14 @@ function calculateMetrics(orders: ShopifyOrder[]): SalesMetrics & { currency: st
   return { revenue, orders: orderCount, averageOrderValue, itemsSold, currency };
 }
 
-async function fetchOrdersForDateRange(start: Date, end: Date): Promise<ShopifyOrder[]> {
+async function fetchOrdersForDateRange(start: Date, end: Date): Promise<{ orders: ShopifyOrder[]; truncated: boolean }> {
   const queryStr = buildShopifyDateQuery(start, end);
-  const data = await shopifyQuery<OrdersQueryResult>(ORDERS_BY_DATE_RANGE, { query: queryStr });
-  return data.orders.edges;
+  const { edges, truncated } = await fetchAllPages(
+    ORDERS_BY_DATE_RANGE,
+    { query: queryStr },
+    (data) => (data as OrdersQueryResult).orders
+  );
+  return { orders: edges, truncated };
 }
 
 export async function handleGetSalesSummary(args: unknown): Promise<{
@@ -121,25 +96,27 @@ export async function handleGetSalesSummary(args: unknown): Promise<{
     const { start: currentStart, end: currentEnd } = getPeriodDates(period, startDate, endDate);
 
     // Fetch current period orders
-    const currentOrders = await fetchOrdersForDateRange(currentStart, currentEnd);
+    const { orders: currentOrders, truncated: currentTruncated } = await fetchOrdersForDateRange(currentStart, currentEnd);
+    let anyTruncated = currentTruncated;
     const currentMetrics = calculateMetrics(currentOrders);
     const currency = currentMetrics.currency;
 
     // Build period labels
     const currentLabel = formatPeriodLabel(period, currentStart, currentEnd);
 
-    let responseText = `📊 RESUMEN DE VENTAS - ${currentLabel.toUpperCase()}\n\n`;
-    responseText += `MÉTRICAS ACTUALES:\n`;
+    let responseText = `📊 SALES SUMMARY - ${currentLabel.toUpperCase()}\n\n`;
+    responseText += `CURRENT METRICS:\n`;
     responseText += `• Revenue: ${formatCurrency(currentMetrics.revenue, currency)}\n`;
-    responseText += `• Pedidos: ${formatNumber(currentMetrics.orders)}\n`;
-    responseText += `• Ticket promedio: ${formatCurrency(currentMetrics.averageOrderValue, currency)}\n`;
-    responseText += `• Unidades vendidas: ${formatNumber(currentMetrics.itemsSold)}\n`;
+    responseText += `• Orders: ${formatNumber(currentMetrics.orders)}\n`;
+    responseText += `• Average order value: ${formatCurrency(currentMetrics.averageOrderValue, currency)}\n`;
+    responseText += `• Units sold: ${formatNumber(currentMetrics.itemsSold)}\n`;
 
     let previousMetrics: SalesMetrics | undefined;
 
     if (compareWithPrevious) {
       const { start: prevStart, end: prevEnd } = getPreviousPeriodDates(currentStart, currentEnd);
-      const previousOrders = await fetchOrdersForDateRange(prevStart, prevEnd);
+      const { orders: previousOrders, truncated: prevTruncated } = await fetchOrdersForDateRange(prevStart, prevEnd);
+      if (prevTruncated) anyTruncated = true;
       previousMetrics = calculateMetrics(previousOrders);
 
       const prevLabel = formatPreviousPeriodLabel(period, prevStart, prevEnd);
@@ -150,12 +127,12 @@ export async function handleGetSalesSummary(args: unknown): Promise<{
 
       responseText += `\nVS. ${prevLabel.toUpperCase()}:\n`;
       responseText += `• Revenue: ${formatPercentage(revenueChange.percentage)} (${formatCurrencyChange(revenueChange.value, currency)})\n`;
-      responseText += `• Pedidos: ${formatPercentage(ordersChange.percentage)} (${ordersChange.value >= 0 ? '+' : ''}${Math.round(ordersChange.value)})\n`;
-      responseText += `• Ticket promedio: ${formatPercentage(aovChange.percentage)} (${formatCurrencyChange(aovChange.value, currency)})\n`;
+      responseText += `• Orders: ${formatPercentage(ordersChange.percentage)} (${ordersChange.value >= 0 ? '+' : ''}${Math.round(ordersChange.value)})\n`;
+      responseText += `• Average order value: ${formatPercentage(aovChange.percentage)} (${formatCurrencyChange(aovChange.value, currency)})\n`;
     }
 
     // Generate insights
-    const insights = generateSalesInsights(
+    const { insights, signals } = generateSalesInsights(
       { revenue: currentMetrics.revenue, orders: currentMetrics.orders, averageOrderValue: currentMetrics.averageOrderValue, itemsSold: currentMetrics.itemsSold },
       previousMetrics
     );
@@ -166,10 +143,14 @@ export async function handleGetSalesSummary(args: unknown): Promise<{
     }
 
     // Generate recommendations
-    const recommendations = generateSalesRecommendations(insights);
-    responseText += `\n📋 RECOMENDACIONES:\n`;
+    const recommendations = generateSalesRecommendations(signals);
+    responseText += `\n📋 RECOMMENDATIONS:\n`;
     for (const rec of recommendations) {
       responseText += `• ${rec}\n`;
+    }
+
+    if (anyTruncated) {
+      responseText += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return {

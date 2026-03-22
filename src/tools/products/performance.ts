@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import {
   getPeriodDates,
@@ -71,15 +71,18 @@ export async function handleGetProductPerformance(args: unknown): Promise<ToolRe
     const { start, end } = getPeriodDates(period, startDate, endDate);
     const queryStr = buildShopifyDateQuery(start, end);
 
-    const data = await shopifyQuery<OrdersQueryResult>(ORDERS_BY_DATE_RANGE, { query: queryStr });
-    const orders = data.orders.edges;
+    const { edges: orders, truncated } = await fetchAllPages(
+      ORDERS_BY_DATE_RANGE,
+      { query: queryStr },
+      (data) => (data as OrdersQueryResult).orders
+    );
 
     if (orders.length === 0) {
       const label = formatPeriodLabel(period, start, end);
       return {
         content: [{
           type: 'text',
-          text: `📦 RENDIMIENTO DE PRODUCTOS - ${label.toUpperCase()}\n\nNo se encontraron pedidos en el período seleccionado.`,
+          text: `📦 PRODUCT PERFORMANCE - ${label.toUpperCase()}\n\nNo orders found in the selected period.`,
         }],
       };
     }
@@ -94,7 +97,7 @@ export async function handleGetProductPerformance(args: unknown): Promise<ToolRe
       currency = order.totalPriceSet.shopMoney.currencyCode;
 
       for (const { node: item } of order.lineItems.edges) {
-        const title = item.product?.title ?? '(Sin producto)';
+        const title = item.product?.title ?? '(No product)';
         const lineRevenue = parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.quantity;
 
         const existing = products.get(title);
@@ -126,12 +129,12 @@ export async function handleGetProductPerformance(args: unknown): Promise<ToolRe
     }).slice(0, limit);
 
     const periodLabel = formatPeriodLabel(period, start, end);
-    const sortLabel = sort_by === 'revenue' ? 'Revenue' : sort_by === 'units' ? 'Unidades' : 'Pedidos';
+    const sortLabel = sort_by === 'revenue' ? 'Revenue' : sort_by === 'units' ? 'Units' : 'Orders';
 
-    let text = `📦 RENDIMIENTO DE PRODUCTOS - ${periodLabel.toUpperCase()}\n`;
-    text += `Ordenado por: ${sortLabel}\n\n`;
-    text += `Total del período: ${formatCurrency(totalRevenue, currency)} | ${formatNumber(orders.length)} pedidos | ${formatNumber(totalUnits)} unidades\n`;
-    text += `Mostrando top ${Math.min(limit, sorted.length)} de ${products.size} productos\n\n`;
+    let text = `📦 PRODUCT PERFORMANCE - ${periodLabel.toUpperCase()}\n`;
+    text += `Sorted by: ${sortLabel}\n\n`;
+    text += `Period total: ${formatCurrency(totalRevenue, currency)} | ${formatNumber(orders.length)} orders | ${formatNumber(totalUnits)} units\n`;
+    text += `Showing top ${Math.min(limit, sorted.length)} of ${products.size} products\n\n`;
 
     const sep = '─'.repeat(80);
     text += `${sep}\n`;
@@ -143,8 +146,8 @@ export async function handleGetProductPerformance(args: unknown): Promise<ToolRe
       const pctRevenue = totalRevenue > 0 ? (p.revenue / totalRevenue) * 100 : 0;
 
       text += `${i + 1}. ${p.title}\n`;
-      text += `   Revenue: ${formatCurrency(p.revenue, currency)} (${pctRevenue.toFixed(1)}% del total)\n`;
-      text += `   Unidades: ${formatNumber(p.units)} | Pedidos: ${formatNumber(orderCount)} | AOV: ${formatCurrency(aov, currency)}\n`;
+      text += `   Revenue: ${formatCurrency(p.revenue, currency)} (${pctRevenue.toFixed(1)}% of total)\n`;
+      text += `   Units: ${formatNumber(p.units)} | Orders: ${formatNumber(orderCount)} | AOV: ${formatCurrency(aov, currency)}\n`;
       text += `${sep}\n`;
     }
 
@@ -152,17 +155,21 @@ export async function handleGetProductPerformance(args: unknown): Promise<ToolRe
     if (sorted.length > 0) {
       const top = sorted[0];
       const topPct = totalRevenue > 0 ? (top.revenue / totalRevenue) * 100 : 0;
-      text += `\n💡 Top performer: "${top.title}" con ${topPct.toFixed(1)}% del revenue total.\n`;
+      text += `\n💡 Top performer: "${top.title}" with ${topPct.toFixed(1)}% of total revenue.\n`;
     }
 
     if (sorted.length >= 3) {
       const top3Rev = sorted.slice(0, 3).reduce((s, p) => s + p.revenue, 0);
       const top3Pct = totalRevenue > 0 ? (top3Rev / totalRevenue) * 100 : 0;
-      text += `💡 Los top 3 productos concentran el ${top3Pct.toFixed(1)}% del revenue.\n`;
+      text += `💡 Top 3 products account for ${top3Pct.toFixed(1)}% of revenue.\n`;
 
       if (top3Pct > 80) {
-        text += `⚠️ Alta concentración de revenue — considerar diversificar la oferta.\n`;
+        text += `⚠️ High revenue concentration — consider diversifying your product offering.\n`;
       }
+    }
+
+    if (truncated) {
+      text += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return { content: [{ type: 'text', text }] };

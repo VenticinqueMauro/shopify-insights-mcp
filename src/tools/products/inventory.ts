@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { PRODUCTS_QUERY } from '../../shopify/queries/products.js';
 import { formatNumber } from '../../utils/formatting.js';
 import { handleToolError } from '../../utils/errors.js';
@@ -43,8 +43,11 @@ export async function handleGetInventoryAlerts(args: unknown): Promise<ToolResul
   try {
     const { low_stock_threshold, include_out_of_stock } = InventorySchema.parse(args);
 
-    const data = await shopifyQuery<ProductsQueryResult>(PRODUCTS_QUERY);
-    const products = data.products.edges;
+    const { edges: products, truncated } = await fetchAllPages(
+      PRODUCTS_QUERY,
+      {},
+      (data) => (data as ProductsQueryResult).products
+    );
 
     const outOfStock: VariantAlert[] = [];
     const lowStock: VariantAlert[] = [];
@@ -83,45 +86,49 @@ export async function handleGetInventoryAlerts(args: unknown): Promise<ToolResul
     lowStock.sort((a, b) => a.quantity - b.quantity);
 
     const sep = '─'.repeat(70);
-    let text = `🚨 ALERTAS DE INVENTARIO\n\n`;
-    text += `Umbral de stock bajo: ≤ ${low_stock_threshold} unidades\n`;
-    text += `Total de variantes activas: ${formatNumber(totalVariants)}\n\n`;
+    let text = `🚨 INVENTORY ALERTS\n\n`;
+    text += `Low stock threshold: ≤ ${low_stock_threshold} units\n`;
+    text += `Total active variants: ${formatNumber(totalVariants)}\n\n`;
 
     // Summary counts
     text += `${sep}\n`;
-    text += `  🔴 Sin stock:    ${formatNumber(outOfStock.length)} variantes\n`;
-    text += `  🟡 Stock bajo:   ${formatNumber(lowStock.length)} variantes\n`;
-    text += `  🟢 Stock sano:   ${formatNumber(healthyCount)} variantes\n`;
+    text += `  🔴 Out of stock:  ${formatNumber(outOfStock.length)} variants\n`;
+    text += `  🟡 Low stock:     ${formatNumber(lowStock.length)} variants\n`;
+    text += `  🟢 Healthy stock: ${formatNumber(healthyCount)} variants\n`;
     text += `${sep}\n`;
 
     // Out of stock detail
     if (include_out_of_stock && outOfStock.length > 0) {
-      text += `\n🔴 SIN STOCK (${outOfStock.length})\n\n`;
+      text += `\n🔴 OUT OF STOCK (${outOfStock.length})\n\n`;
       for (const v of outOfStock) {
         const variant = v.variantTitle !== 'Default Title' ? ` (${v.variantTitle})` : '';
-        text += `  • ${v.productTitle}${variant} — ${v.quantity} uds\n`;
+        text += `  • ${v.productTitle}${variant} — ${v.quantity} units\n`;
       }
     }
 
     // Low stock detail
     if (lowStock.length > 0) {
-      text += `\n🟡 STOCK BAJO (${lowStock.length})\n\n`;
+      text += `\n🟡 LOW STOCK (${lowStock.length})\n\n`;
       for (const v of lowStock) {
         const variant = v.variantTitle !== 'Default Title' ? ` (${v.variantTitle})` : '';
-        text += `  • ${v.productTitle}${variant} — ${v.quantity} uds\n`;
+        text += `  • ${v.productTitle}${variant} — ${v.quantity} units\n`;
       }
     }
 
     // Insights
     const alertCount = outOfStock.length + lowStock.length;
     if (alertCount === 0) {
-      text += `\n💡 Todos los productos tienen stock saludable. No se requiere acción.\n`;
+      text += `\n💡 All products have healthy stock levels. No action required.\n`;
     } else {
       const pct = ((alertCount / totalVariants) * 100).toFixed(1);
-      text += `\n💡 ${pct}% de las variantes requieren atención de restock.\n`;
+      text += `\n💡 ${pct}% of variants require restocking attention.\n`;
       if (outOfStock.length > 0) {
-        text += `💡 Prioridad: reponer las ${outOfStock.length} variantes sin stock para evitar ventas perdidas.\n`;
+        text += `💡 Priority: restock ${outOfStock.length} out-of-stock variant(s) to avoid lost sales.\n`;
       }
+    }
+
+    if (truncated) {
+      text += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return { content: [{ type: 'text', text }] };

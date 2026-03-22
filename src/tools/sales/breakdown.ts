@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import {
   getPeriodDates,
@@ -8,6 +8,7 @@ import {
 } from '../../utils/dates.js';
 import { formatCurrency, formatPercentage, formatNumber } from '../../utils/formatting.js';
 import { handleToolError } from '../../utils/errors.js';
+import type { OrdersQueryResult } from '../../types/shopify.js';
 
 // Tool definition
 export const revenueBreakdownTool = {
@@ -56,41 +57,6 @@ const RevenueBreakdownSchema = z.object({
   limit: z.number().int().min(1).max(100).default(10),
 });
 
-// Shopify types
-interface ShopifyMoney {
-  amount: string;
-  currencyCode: string;
-}
-
-interface ShopifyLineItem {
-  node: {
-    quantity: number;
-    originalUnitPriceSet: { shopMoney: ShopifyMoney };
-    product: {
-      id: string;
-      title: string;
-      vendor: string;
-      productType: string;
-    } | null;
-  };
-}
-
-interface ShopifyOrder {
-  node: {
-    id: string;
-    name: string;
-    processedAt: string;
-    totalPriceSet: { shopMoney: ShopifyMoney };
-    lineItems: { edges: ShopifyLineItem[] };
-    financialStatus: string;
-    fulfillmentStatus: string | null;
-  };
-}
-
-interface OrdersQueryResult {
-  orders: { edges: ShopifyOrder[] };
-}
-
 interface BreakdownEntry {
   key: string;
   revenue: number;
@@ -104,19 +70,19 @@ function getDimensionKey(
   product: { id: string; title: string; vendor: string; productType: string } | null,
   dimension: Dimension
 ): string {
-  if (!product) return '(Sin producto)';
+  if (!product) return '(No product)';
   switch (dimension) {
     case 'product': return product.title;
-    case 'vendor': return product.vendor || '(Sin vendedor)';
-    case 'product_type': return product.productType || '(Sin tipo)';
+    case 'vendor': return product.vendor || '(No vendor)';
+    case 'product_type': return product.productType || '(No type)';
   }
 }
 
 function getDimensionLabel(dimension: Dimension): string {
   switch (dimension) {
-    case 'product': return 'Producto';
-    case 'vendor': return 'Vendedor';
-    case 'product_type': return 'Tipo de Producto';
+    case 'product': return 'Product';
+    case 'vendor': return 'Vendor';
+    case 'product_type': return 'Product Type';
   }
 }
 
@@ -131,15 +97,18 @@ export async function handleGetRevenueBreakdown(args: unknown): Promise<{
     const { start, end } = getPeriodDates(period, startDate, endDate);
     const queryStr = buildShopifyDateQuery(start, end);
 
-    const data = await shopifyQuery<OrdersQueryResult>(ORDERS_BY_DATE_RANGE, { query: queryStr });
-    const orders = data.orders.edges;
+    const { edges: orders, truncated } = await fetchAllPages(
+      ORDERS_BY_DATE_RANGE,
+      { query: queryStr },
+      (data) => (data as OrdersQueryResult).orders
+    );
 
     if (orders.length === 0) {
       const label = formatPeriodLabel(period, start, end);
       return {
         content: [{
           type: 'text',
-          text: `📊 DESGLOSE DE REVENUE - ${label.toUpperCase()}\n\nNo se encontraron pedidos en el período seleccionado.`,
+          text: `📊 REVENUE BREAKDOWN - ${label.toUpperCase()}\n\nNo orders found in the selected period.`,
         }],
       };
     }
@@ -183,15 +152,15 @@ export async function handleGetRevenueBreakdown(args: unknown): Promise<{
     const periodLabel = formatPeriodLabel(period, start, end);
     const dimLabel = getDimensionLabel(dimension);
 
-    let text = `📊 DESGLOSE DE REVENUE POR ${dimLabel.toUpperCase()} - ${periodLabel.toUpperCase()}\n\n`;
-    text += `Total del período: ${formatCurrency(totalRevenue, currency)}\n`;
-    text += `Total de pedidos: ${formatNumber(orders.length)}\n`;
-    text += `Mostrando top ${Math.min(limit, sorted.length)} de ${breakdown.size} ${dimLabel.toLowerCase()}s\n\n`;
+    let text = `📊 REVENUE BREAKDOWN BY ${dimLabel.toUpperCase()} - ${periodLabel.toUpperCase()}\n\n`;
+    text += `Period total: ${formatCurrency(totalRevenue, currency)}\n`;
+    text += `Total orders: ${formatNumber(orders.length)}\n`;
+    text += `Showing top ${Math.min(limit, sorted.length)} of ${breakdown.size} ${dimLabel.toLowerCase()}s\n\n`;
 
     const sep = '─'.repeat(70);
     text += `${sep}\n`;
 
-    const header = `${'#'.padEnd(4)}${'NOMBRE'.padEnd(30)}${'REVENUE'.padStart(14)}${'% DEL TOTAL'.padStart(12)}${'UNIDADES'.padStart(10)}\n`;
+    const header = `${'#'.padEnd(4)}${'NAME'.padEnd(30)}${'REVENUE'.padStart(14)}${'% OF TOTAL'.padStart(12)}${'UNITS'.padStart(10)}\n`;
     text += header;
     text += `${sep}\n`;
 
@@ -215,7 +184,7 @@ export async function handleGetRevenueBreakdown(args: unknown): Promise<{
         .reduce((sum, e) => sum + e.revenue, 0);
 
       const othersPct = totalRevenue > 0 ? (othersRevenue / totalRevenue) * 100 : 0;
-      text += `${''.padEnd(4)}${'Otros...'.padEnd(30)}${formatCurrency(othersRevenue, currency).padStart(14)}${`${othersPct.toFixed(1)}%`.padStart(12)}\n`;
+      text += `${''.padEnd(4)}${'Others...'.padEnd(30)}${formatCurrency(othersRevenue, currency).padStart(14)}${`${othersPct.toFixed(1)}%`.padStart(12)}\n`;
       text += `${sep}\n`;
     }
 
@@ -223,13 +192,17 @@ export async function handleGetRevenueBreakdown(args: unknown): Promise<{
     if (sorted.length > 0) {
       const top = sorted[0];
       const topPct = totalRevenue > 0 ? (top.revenue / totalRevenue) * 100 : 0;
-      text += `\n💡 El top 1 "${top.key}" representa el ${topPct.toFixed(1)}% del revenue total (${formatCurrency(top.revenue, currency)}).\n`;
+      text += `\n💡 Top 1 "${top.key}" accounts for ${topPct.toFixed(1)}% of total revenue (${formatCurrency(top.revenue, currency)}).\n`;
 
       if (sorted.length >= 3) {
         const top3Revenue = sorted.slice(0, 3).reduce((s, e) => s + e.revenue, 0);
         const top3Pct = totalRevenue > 0 ? (top3Revenue / totalRevenue) * 100 : 0;
-        text += `💡 Los top 3 ${dimLabel.toLowerCase()}s concentran el ${top3Pct.toFixed(1)}% del revenue total.\n`;
+        text += `💡 Top 3 ${dimLabel.toLowerCase()}s account for ${top3Pct.toFixed(1)}% of total revenue.\n`;
       }
+    }
+
+    if (truncated) {
+      text += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return {

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import { buildShopifyDateQuery } from '../../utils/dates.js';
 import { formatCurrency, formatNumber } from '../../utils/formatting.js';
@@ -217,8 +217,11 @@ export async function handleGetOrderAlerts(args: unknown): Promise<ToolResult> {
     end.setHours(23, 59, 59, 999);
 
     const queryStr = buildShopifyDateQuery(start, end);
-    const data = await shopifyQuery<OrdersQueryResult>(ORDERS_BY_DATE_RANGE, { query: queryStr });
-    const orders = data.orders.edges;
+    const { edges: orders, truncated } = await fetchAllPages(
+      ORDERS_BY_DATE_RANGE,
+      { query: queryStr },
+      (data) => (data as OrdersQueryResult).orders
+    );
 
     const { delayedFulfillment, financialIssues, highValuePending } = classifyOrders(
       orders,
@@ -281,6 +284,10 @@ export async function handleGetOrderAlerts(args: unknown): Promise<ToolResult> {
     text += `\n📋 RECOMENDACIONES:\n`;
     for (const rec of recs) {
       text += `• ${rec}\n`;
+    }
+
+    if (truncated) {
+      text += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return { content: [{ type: 'text', text }] };

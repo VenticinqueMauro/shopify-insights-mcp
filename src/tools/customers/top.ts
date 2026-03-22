@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { shopifyQuery } from '../../shopify/client.js';
+import { fetchAllPages } from '../../shopify/client.js';
 import { CUSTOMERS_QUERY } from '../../shopify/queries/customers.js';
 import { formatCurrency, formatNumber } from '../../utils/formatting.js';
 import { handleToolError } from '../../utils/errors.js';
@@ -37,12 +37,15 @@ export async function handleGetTopCustomers(args: unknown): Promise<ToolResult> 
   try {
     const { sort_by, limit } = TopCustomersSchema.parse(args);
 
-    const data = await shopifyQuery<CustomersQueryResult>(CUSTOMERS_QUERY);
-    const customers = data.customers.edges;
+    const { edges: customers, truncated } = await fetchAllPages(
+      CUSTOMERS_QUERY,
+      {},
+      (data) => (data as CustomersQueryResult).customers
+    );
 
     if (customers.length === 0) {
       return {
-        content: [{ type: 'text', text: '👥 TOP CLIENTES\n\nNo se encontraron clientes.' }],
+        content: [{ type: 'text', text: '👥 TOP CUSTOMERS\n\nNo customers found.' }],
       };
     }
 
@@ -71,11 +74,11 @@ export async function handleGetTopCustomers(args: unknown): Promise<ToolResult> 
     const top = parsed.slice(0, limit);
     const currency = top[0]?.currency ?? 'USD';
     const totalRevenueAll = parsed.reduce((s, c) => s + c.totalSpent, 0);
-    const sortLabel = sort_by === 'total_spent' ? 'Gasto total' : 'Cantidad de pedidos';
+    const sortLabel = sort_by === 'total_spent' ? 'Total spent' : 'Order count';
 
-    let text = `👥 TOP CLIENTES\n`;
-    text += `Ordenado por: ${sortLabel}\n`;
-    text += `Total de clientes: ${formatNumber(customers.length)}\n\n`;
+    let text = `👥 TOP CUSTOMERS\n`;
+    text += `Sorted by: ${sortLabel}\n`;
+    text += `Total customers: ${formatNumber(customers.length)}\n\n`;
 
     const sep = '─'.repeat(70);
     text += `${sep}\n`;
@@ -86,8 +89,8 @@ export async function handleGetTopCustomers(args: unknown): Promise<ToolResult> 
 
       text += `${i + 1}. ${c.name}\n`;
       text += `   Email: ${c.email}\n`;
-      text += `   Gasto total: ${formatCurrency(c.totalSpent, currency)} (${pctRevenue.toFixed(1)}% del total)\n`;
-      text += `   Pedidos: ${formatNumber(c.ordersCount)} | AOV: ${formatCurrency(c.aov, currency)}\n`;
+      text += `   Total spent: ${formatCurrency(c.totalSpent, currency)} (${pctRevenue.toFixed(1)}% of total)\n`;
+      text += `   Orders: ${formatNumber(c.ordersCount)} | AOV: ${formatCurrency(c.aov, currency)}\n`;
       text += `${sep}\n`;
     }
 
@@ -95,15 +98,19 @@ export async function handleGetTopCustomers(args: unknown): Promise<ToolResult> 
     if (top.length > 0) {
       const vip = top[0];
       const vipPct = totalRevenueAll > 0 ? (vip.totalSpent / totalRevenueAll) * 100 : 0;
-      text += `\n💡 Cliente #1 "${vip.name}" representa el ${vipPct.toFixed(1)}% del revenue total.\n`;
+      text += `\n💡 Customer #1 "${vip.name}" accounts for ${vipPct.toFixed(1)}% of total revenue.\n`;
 
       const avgOrders = parsed.reduce((s, c) => s + c.ordersCount, 0) / parsed.length;
-      text += `💡 Promedio de pedidos por cliente: ${avgOrders.toFixed(1)}\n`;
+      text += `💡 Average orders per customer: ${avgOrders.toFixed(1)}\n`;
 
       const highFreq = parsed.filter(c => c.ordersCount >= avgOrders * 2);
       if (highFreq.length > 0) {
-        text += `💡 ${highFreq.length} cliente(s) con frecuencia de compra 2x por encima del promedio.\n`;
+        text += `💡 ${highFreq.length} customer(s) with purchase frequency 2x above average.\n`;
       }
+    }
+
+    if (truncated) {
+      text += '\n⚠️ Results limited to configured maximum records. Store may have more data. Increase SHOPIFY_MAX_RECORDS to fetch more.\n';
     }
 
     return { content: [{ type: 'text', text }] };
