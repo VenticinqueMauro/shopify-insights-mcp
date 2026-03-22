@@ -1,180 +1,183 @@
 # Shopify Insights MCP
 
-> MCP Server de analytics e inteligencia de negocio para Shopify. No solo datos — **insights accionables**.
+> MCP Server for Shopify that delivers actionable business insights — comparisons, alerts, and recommendations, not just numbers.
 
-## Diferenciación
+## Why This Exists
 
-Los MCP existentes para Shopify devuelven datos crudos. Shopify Insights MCP genera **comparativas, alertas y recomendaciones**:
+Existing Shopify MCP servers return raw data. Shopify Insights MCP answers **"what does it mean?"** and **"what should I do?"**:
 
-| Otros MCP | Shopify Insights MCP |
+| Other MCPs | Shopify Insights MCP |
 |-----------|---------------------|
-| "Tienes $45,000 en ventas" | "Llevas $45,000, **12% menos** que el mes pasado" |
-| "Lista de 50 productos" | "5 productos tienen **stock crítico** y alta demanda" |
-| "10 pedidos pendientes" | "3 pedidos llevan **más de 5 días** sin enviar" |
+| "You have $45,000 in sales" | "You have $45,000, **12% less** than last month" |
+| "List of 50 products" | "5 products have **critical stock** and high demand" |
+| "10 pending orders" | "3 orders have been **unfulfilled for 5+ days**" |
 
 ## Stack
 
 - **TypeScript** + **MCP SDK** (`@modelcontextprotocol/sdk`)
 - **Shopify Admin API** (GraphQL)
-- **Zod** para validación de inputs
-- Transporte: **stdio**
+- **Zod** for input validation
+- Transport: **stdio**
 
-## Instalación
+## Quick Start
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/VenticinqueMauro/shopify-insights-mcp.git
 cd shopify-insights-mcp
 npm install
 ```
 
-### Configuración
+### Configuration
 
-Crea un archivo `.env` basado en `.env.example`:
+Create a `.env` file based on `.env.example`:
 
 ```env
-SHOPIFY_SHOP_DOMAIN=tu-tienda.myshopify.com
-SHOPIFY_ACCESS_TOKEN=shpat_tu_token_aqui
-SHOPIFY_CLIENT_ID=tu_client_id
-SHOPIFY_CLIENT_SECRET=tu_client_secret
+SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com
+SHOPIFY_ACCESS_TOKEN=shpat_your_access_token
+SHOPIFY_CLIENT_ID=your_client_id
+SHOPIFY_CLIENT_SECRET=your_client_secret
 ```
 
-**Requisitos de la app Shopify:**
+**Shopify App Requirements:**
 - Scopes: `read_orders`, `read_products`, `read_customers`
 - API version: `2024-01`
+- Create a Custom App in your Shopify Admin > Settings > Apps and sales channels > Develop apps
 
 ### Build & Run
 
 ```bash
-npm run build       # Compila TypeScript → dist/
-npm start           # Ejecuta el server MCP (stdio)
-npm run dev         # Ejecuta con ts-node (desarrollo)
-npm run inspector   # Abre MCP Inspector para debugging
+npm run build       # Compile TypeScript → dist/
+npm start           # Run the MCP server (stdio)
+npm run dev         # Run with ts-node (development)
+npm run inspector   # Open MCP Inspector for debugging
 ```
 
-## Uso con Claude Desktop
+## Usage with Claude Desktop
 
-Agrega la configuración en `claude_desktop_config.json`:
+Add to your `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "shopify-insights": {
       "command": "node",
-      "args": ["ruta/a/shopify-insights-mcp/dist/index.js"],
+      "args": ["/path/to/shopify-insights-mcp/dist/index.js"],
       "env": {
-        "SHOPIFY_SHOP_DOMAIN": "tu-tienda.myshopify.com",
-        "SHOPIFY_ACCESS_TOKEN": "shpat_tu_token"
+        "SHOPIFY_SHOP_DOMAIN": "your-store.myshopify.com",
+        "SHOPIFY_ACCESS_TOKEN": "shpat_your_token"
       }
     }
   }
 }
 ```
 
+Then ask Claude things like:
+- *"How are sales this month compared to last month?"*
+- *"Which products are trending up?"*
+- *"Are there any orders that need urgent attention?"*
+- *"How are my customers segmented?"*
+
 ## Tools (10)
 
-### Ventas & Revenue
+### Sales & Revenue
 
-| Tool | Descripción |
+| Tool | Description |
 |------|-------------|
-| `get_sales_summary` | Resumen de ventas con comparativa vs. período anterior. Inputs: `period`, `compareWithPrevious` |
-| `get_sales_comparison` | Compara dos períodos específicos lado a lado con % de cambio |
-| `get_revenue_breakdown` | Revenue desglosado por producto, vendedor o tipo de producto |
+| `get_sales_summary` | Sales summary with period-over-period comparison. Revenue, orders, AOV, units sold |
+| `get_sales_comparison` | Side-by-side comparison of two custom date ranges |
+| `get_revenue_breakdown` | Revenue broken down by product, vendor, or product type |
 
-### Productos & Inventario
+### Products & Inventory
 
-| Tool | Descripción |
+| Tool | Description |
 |------|-------------|
-| `get_product_performance` | Ranking de productos por revenue, unidades vendidas o cantidad de pedidos |
-| `get_inventory_alerts` | Alertas de stock: productos agotados, stock bajo, sobrestock |
-| `get_trending_products` | Productos en tendencia (subiendo/bajando) vs. período anterior |
+| `get_product_performance` | Product ranking by revenue, units sold, or order count |
+| `get_inventory_alerts` | Stock alerts: out-of-stock, low stock, overstock detection |
+| `get_trending_products` | Trending products (rising/falling) vs. previous period |
 
-### Clientes
+### Customers
 
-| Tool | Descripción |
+| Tool | Description |
 |------|-------------|
-| `get_customer_segments` | Segmentación automática: VIP, Leales, Retornantes, Nuevos, Inactivos |
-| `get_top_customers` | Ranking de clientes por gasto total o cantidad de pedidos |
+| `get_customer_segments` | Automatic segmentation: VIP, Loyal, Returning, New, Inactive |
+| `get_top_customers` | Customer ranking by total spend or order count |
 
-### Operaciones & Pedidos
+### Operations
 
-| Tool | Descripción |
+| Tool | Description |
 |------|-------------|
-| `get_order_alerts` | Pedidos que requieren atención: envíos demorados, problemas financieros, alto valor pendiente |
-| `get_fulfillment_metrics` | Métricas operativas: tasa de fulfillment, estado financiero, score de salud |
+| `get_order_alerts` | Orders needing attention: delayed fulfillment, financial issues, high-value pending |
+| `get_fulfillment_metrics` | Operational metrics: fulfillment rate, financial status, health score |
 
-## Arquitectura
+## Architecture
 
 ```
 src/
-├── index.ts                  # Entry point (carga .env, inicia server)
-├── server.ts                 # Registro de tools y request handler
+├── index.ts                  # Entry point
+├── server.ts                 # Tool registration & request handler
 ├── shopify/
-│   ├── auth.ts               # Credenciales desde .env
-│   ├── client.ts             # Wrapper GraphQL
-│   └── queries/              # Queries de orders, products, customers
+│   ├── auth.ts               # Credentials from env vars
+│   ├── client.ts             # GraphQL wrapper
+│   └── queries/              # Orders, products, customers queries
 ├── tools/
-│   ├── sales/                # 3 tools de ventas
-│   ├── products/             # 3 tools de productos
-│   ├── customers/            # 2 tools de clientes
-│   └── operations/           # 2 tools operativos
+│   ├── sales/                # 3 sales tools
+│   ├── products/             # 3 product tools
+│   ├── customers/            # 2 customer tools
+│   └── operations/           # 2 operations tools
 ├── analytics/
-│   ├── comparisons.ts        # Cálculo de cambios (%, dirección)
-│   ├── insights.ts           # Generación de insights automáticos
-│   └── recommendations.ts    # Recomendaciones accionables
+│   ├── comparisons.ts        # Change calculation (%, direction)
+│   ├── insights.ts           # Automatic insight generation
+│   └── recommendations.ts    # Actionable recommendations
 ├── types/
-│   └── shopify.ts            # Tipos compartidos de GraphQL
+│   └── shopify.ts            # Shared GraphQL types
 └── utils/
-    ├── dates.ts              # Períodos, formateo de fechas
-    ├── formatting.ts         # Moneda, porcentajes, números
-    └── errors.ts             # Manejo de errores estándar
+    ├── dates.ts              # Period handling & date formatting
+    ├── formatting.ts         # Currency, percentage, number formatting
+    └── errors.ts             # Standard error handling
 ```
 
-## Ejemplo de output
+## Example Output
 
 ```
-📊 RESUMEN DE VENTAS - ESTE MES
+📊 SALES SUMMARY - THIS MONTH
 
-MÉTRICAS ACTUALES:
+CURRENT METRICS:
 • Revenue: $1,245,000.00
-• Pedidos: 234
-• Ticket promedio: $5,320.51
-• Unidades vendidas: 892
+• Orders: 234
+• Avg Order Value: $5,320.51
+• Units Sold: 892
 
-VS. MES ANTERIOR:
+VS. PREVIOUS MONTH:
 • Revenue: +18.0% (+$190,000.00)
-• Pedidos: +12.0% (+25)
-• Ticket promedio: +5.4% (+$272.00)
+• Orders: +12.0% (+25)
+• Avg Order Value: +5.4% (+$272.00)
 
 💡 INSIGHTS:
-• 📈 Los ingresos crecieron un 18.0% respecto al período anterior.
-• 🛒 El volumen de pedidos aumentó un 12.0% (+25 pedidos).
+• 📈 Revenue grew 18.0% compared to the previous period.
+• 🛒 Order volume increased 12.0% (+25 orders).
 
-📋 RECOMENDACIONES:
-• 🚀 Aprovecha el momentum positivo aumentando la inversión en los canales que mejor funcionan.
-• 📦 Asegúrate de tener suficiente stock para sostener el crecimiento en la demanda.
+📋 RECOMMENDATIONS:
+• 🚀 Leverage the positive momentum by increasing investment in top-performing channels.
+• 📦 Ensure sufficient stock to sustain demand growth.
 ```
 
 ## Testing
 
 ```bash
-# Cargar variables de entorno
+# Load environment variables
 export $(grep -v '^#' .env | xargs)
 
-# Test via JSON-RPC sobre stdio
+# Test via JSON-RPC over stdio
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_sales_summary","arguments":{"period":"month"}}}' | node dist/index.js
 
-# O usar MCP Inspector
+# Or use MCP Inspector
 npm run inspector
 ```
 
-## Dev Store
+## Contributing
 
-- **Dominio:** m25dev.myshopify.com
-- **Datos:** 10 productos, 10 clientes, 50 órdenes
-- **Revenue total:** ~ARS 995,104
-- **Ventana de datos:** 60 días (órdenes redistribuidas con `redistribute-dates.mjs`)
+Contributions are welcome! Feel free to open issues or submit pull requests.
 
-## Autor
+## License
 
-**Mauro Venticinque** — Frontend Developer @ VTEX
-Challenge Marzo 2026 — Self-Driven Technical Upgrade
+MIT
