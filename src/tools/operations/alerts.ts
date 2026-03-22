@@ -94,16 +94,16 @@ function classifyOrders(
     ) {
       delayedFulfillment.push({
         ...base,
-        reason: `Sin enviar hace ${days} días`,
+        reason: `Unfulfilled for ${days} day(s)`,
       });
     }
 
     // Financial issues
     if (problematicFinancial.includes(financial)) {
       const labels: Record<string, string> = {
-        REFUNDED: 'Reembolsado',
-        PARTIALLY_REFUNDED: 'Reembolso parcial',
-        VOIDED: 'Anulado',
+        REFUNDED: 'Refunded',
+        PARTIALLY_REFUNDED: 'Partially Refunded',
+        VOIDED: 'Voided',
       };
       financialIssues.push({
         ...base,
@@ -119,7 +119,7 @@ function classifyOrders(
     ) {
       highValuePending.push({
         ...base,
-        reason: `Pedido de alto valor (${formatCurrency(amount, currency)}) pendiente`,
+        reason: `High-value order (${formatCurrency(amount, currency)}) pending fulfillment`,
       });
     }
   }
@@ -141,14 +141,14 @@ function generateOrderInsights(
   const total = delayed.length + financial.length + highValue.length;
 
   if (total === 0) {
-    insights.push('Todo en orden — no se detectaron pedidos que requieran atención inmediata.');
+    insights.push('All clear — no orders requiring immediate attention detected.');
     return insights;
   }
 
   if (delayed.length > 0) {
     const maxDays = Math.max(...delayed.map((o) => o.daysPending));
     insights.push(
-      `${delayed.length} pedido(s) sin enviar. El más antiguo lleva ${maxDays} días pendiente.`
+      `${delayed.length} order(s) awaiting fulfillment. The oldest has been pending for ${maxDays} day(s).`
     );
   }
 
@@ -156,13 +156,13 @@ function generateOrderInsights(
     const totalRefunded = financial.reduce((sum, o) => sum + o.amount, 0);
     const currency = financial[0].currency;
     insights.push(
-      `${financial.length} pedido(s) con problemas financieros por un total de ${formatCurrency(totalRefunded, currency)}.`
+      `${financial.length} order(s) with financial issues totaling ${formatCurrency(totalRefunded, currency)}.`
     );
   }
 
   if (highValue.length > 0) {
     insights.push(
-      `${highValue.length} pedido(s) de alto valor esperando fulfillment — priorizar envío.`
+      `${highValue.length} high-value order(s) awaiting fulfillment — prioritize shipping.`
     );
   }
 
@@ -178,27 +178,27 @@ function generateOrderRecommendations(
 
   if (delayed.length >= 3) {
     recs.push(
-      'Revisa el proceso de fulfillment — hay un patrón de retrasos que puede afectar la satisfacción del cliente.'
+      'Review the fulfillment process — a pattern of delays may affect customer satisfaction.'
     );
   }
   if (delayed.length > 0) {
-    recs.push('Contacta al equipo de logística para agilizar los envíos pendientes.');
+    recs.push('Contact the logistics team to expedite pending shipments.');
   }
 
   if (financial.length > 0) {
     recs.push(
-      'Investiga la causa de los reembolsos/anulaciones — pueden indicar problemas con productos o expectativas del cliente.'
+      'Investigate the cause of refunds/voids — they may indicate product issues or unmet customer expectations.'
     );
   }
 
   if (highValue.length > 0) {
     recs.push(
-      'Prioriza el envío de pedidos de alto valor para mejorar la experiencia de clientes VIP.'
+      'Prioritize shipping high-value orders to improve the experience for VIP customers.'
     );
   }
 
   if (recs.length === 0) {
-    recs.push('Mantén el ritmo actual de fulfillment — los tiempos de entrega están dentro de lo esperado.');
+    recs.push('Maintain the current fulfillment pace — delivery times are within expected ranges.');
   }
 
   return recs;
@@ -232,44 +232,44 @@ export async function handleGetOrderAlerts(args: unknown): Promise<ToolResult> {
 
     const totalAlerts = delayedFulfillment.length + financialIssues.length + highValuePending.length;
 
-    let text = `🚨 ALERTAS DE PEDIDOS - Últimos ${lookbackDays} días\n`;
-    text += `${formatNumber(orders.length)} pedidos analizados | ${formatNumber(totalAlerts)} alerta(s) detectada(s)\n`;
+    let text = `🚨 ORDER ALERTS - Last ${lookbackDays} days\n`;
+    text += `${formatNumber(orders.length)} orders analyzed | ${formatNumber(totalAlerts)} alert(s) detected\n`;
     text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     // Delayed fulfillment
-    text += `⏳ ENVÍOS DEMORADOS (>${pendingDaysThreshold} días sin enviar): ${delayedFulfillment.length}\n`;
+    text += `⏳ DELAYED FULFILLMENT (>${pendingDaysThreshold} days unfulfilled): ${delayedFulfillment.length}\n`;
     if (delayedFulfillment.length > 0) {
       for (const o of delayedFulfillment.slice(0, 10)) {
-        text += `  • ${o.name} — ${formatCurrency(o.amount, o.currency)} — ${o.daysPending} días pendiente\n`;
+        text += `  • ${o.name} — ${formatCurrency(o.amount, o.currency)} — ${o.daysPending} day(s) pending\n`;
       }
       if (delayedFulfillment.length > 10) {
-        text += `  ... y ${delayedFulfillment.length - 10} más\n`;
+        text += `  ... and ${delayedFulfillment.length - 10} more\n`;
       }
     } else {
-      text += `  ✅ Sin retrasos\n`;
+      text += `  ✅ No delays\n`;
     }
 
     // Financial issues
-    text += `\n💸 PROBLEMAS FINANCIEROS: ${financialIssues.length}\n`;
+    text += `\n💸 FINANCIAL ISSUES: ${financialIssues.length}\n`;
     if (financialIssues.length > 0) {
       for (const o of financialIssues.slice(0, 10)) {
         text += `  • ${o.name} — ${formatCurrency(o.amount, o.currency)} — ${o.reason}\n`;
       }
       if (financialIssues.length > 10) {
-        text += `  ... y ${financialIssues.length - 10} más\n`;
+        text += `  ... and ${financialIssues.length - 10} more\n`;
       }
     } else {
-      text += `  ✅ Sin problemas financieros\n`;
+      text += `  ✅ No financial issues\n`;
     }
 
     // High-value pending
-    text += `\n💎 PEDIDOS DE ALTO VALOR PENDIENTES (>${formatCurrency(highValueThreshold, 'ARS')}): ${highValuePending.length}\n`;
+    text += `\n💎 HIGH-VALUE PENDING ORDERS (>${formatCurrency(highValueThreshold, 'USD')}): ${highValuePending.length}\n`;
     if (highValuePending.length > 0) {
       for (const o of highValuePending.slice(0, 10)) {
-        text += `  • ${o.name} — ${formatCurrency(o.amount, o.currency)} — ${o.daysPending} días pendiente\n`;
+        text += `  • ${o.name} — ${formatCurrency(o.amount, o.currency)} — ${o.daysPending} day(s) pending\n`;
       }
     } else {
-      text += `  ✅ Sin pedidos de alto valor pendientes\n`;
+      text += `  ✅ No high-value pending orders\n`;
     }
 
     // Insights
@@ -281,7 +281,7 @@ export async function handleGetOrderAlerts(args: unknown): Promise<ToolResult> {
 
     // Recommendations
     const recs = generateOrderRecommendations(delayedFulfillment, financialIssues, highValuePending);
-    text += `\n📋 RECOMENDACIONES:\n`;
+    text += `\n📋 RECOMMENDATIONS:\n`;
     for (const rec of recs) {
       text += `• ${rec}\n`;
     }
