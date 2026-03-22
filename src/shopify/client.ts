@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import { getShopifyCredentials } from './auth.js';
 
 export async function shopifyQuery<T>(
