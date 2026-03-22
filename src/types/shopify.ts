@@ -1,5 +1,10 @@
 // Shared Shopify GraphQL response types
 
+export interface PageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
+
 export interface ShopifyMoney {
   amount: string;
   currencyCode: string;
@@ -32,7 +37,7 @@ export interface ShopifyOrder {
 }
 
 export interface OrdersQueryResult {
-  orders: { edges: ShopifyOrder[] };
+  orders: { edges: ShopifyOrder[]; pageInfo: PageInfo };
 }
 
 export interface ShopifyVariant {
@@ -56,7 +61,7 @@ export interface ShopifyProduct {
 }
 
 export interface ProductsQueryResult {
-  products: { edges: ShopifyProduct[] };
+  products: { edges: ShopifyProduct[]; pageInfo: PageInfo };
 }
 
 export interface ShopifyCustomer {
@@ -72,7 +77,7 @@ export interface ShopifyCustomer {
 }
 
 export interface CustomersQueryResult {
-  customers: { edges: ShopifyCustomer[] };
+  customers: { edges: ShopifyCustomer[]; pageInfo: PageInfo };
 }
 
 export type ToolResult = {
