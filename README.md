@@ -19,42 +19,63 @@ Existing Shopify MCP servers return raw data. Shopify Insights MCP answers **"wh
 - **Zod** for input validation
 - Transport: **stdio**
 
-## Quick Start
+## Installation
+
+### Option A: npm (recommended)
+
+```bash
+npm install -g shopify-insights-mcp
+shopify-insights-mcp init
+```
+
+The `init` command will guide you through connecting your Shopify store and generate the Claude Desktop configuration.
+
+### Option B: From source
 
 ```bash
 git clone https://github.com/VenticinqueMauro/shopify-insights-mcp.git
 cd shopify-insights-mcp
 npm install
+npm run build
+npm run setup       # Guided configuration
 ```
 
-### Configuration
+### Shopify App Requirements
 
-Create a `.env` file based on `.env.example`:
+You need a **Custom App** with these scopes:
+- `read_orders`, `read_products`, `read_customers`
 
-```env
-SHOPIFY_SHOP_DOMAIN=your-store.myshopify.com
-SHOPIFY_ACCESS_TOKEN=shpat_your_access_token
-SHOPIFY_CLIENT_ID=your_client_id
-SHOPIFY_CLIENT_SECRET=your_client_secret
-```
-
-**Shopify App Requirements:**
-- Scopes: `read_orders`, `read_products`, `read_customers`
-- API version: `2024-01`
-- Create a Custom App in your Shopify Admin > Settings > Apps and sales channels > Develop apps
+Create one at: **Shopify Admin > Settings > Apps and sales channels > Develop apps**
 
 ### Build & Run
 
 ```bash
 npm run build       # Compile TypeScript → dist/
 npm start           # Run the MCP server (stdio)
-npm run dev         # Run with ts-node (development)
+npm run setup       # Guided setup wizard
 npm run inspector   # Open MCP Inspector for debugging
 ```
 
 ## Usage with Claude Desktop
 
-Add to your `claude_desktop_config.json`:
+### Quick setup (via npx)
+
+```json
+{
+  "mcpServers": {
+    "shopify-insights": {
+      "command": "npx",
+      "args": ["-y", "shopify-insights-mcp"],
+      "env": {
+        "SHOPIFY_SHOP_DOMAIN": "your-store.myshopify.com",
+        "SHOPIFY_ACCESS_TOKEN": "shpat_your_token"
+      }
+    }
+  }
+}
+```
+
+### Local install
 
 ```json
 {
@@ -70,6 +91,8 @@ Add to your `claude_desktop_config.json`:
   }
 }
 ```
+
+> Run `shopify-insights-mcp init` to generate this config automatically.
 
 Then ask Claude things like:
 - *"How are sales this month compared to last month?"*
