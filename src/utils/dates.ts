@@ -1,44 +1,57 @@
 export type Period = 'today' | 'yesterday' | 'week' | 'month' | 'custom';
 
+function getTodayInTimezone(timezone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
 export function getPeriodDates(
   period: Period,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  timezone: string = 'UTC'
 ): { start: Date; end: Date } {
-  const now = new Date();
-
   switch (period) {
     case 'today': {
-      const start = new Date(now);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(now);
-      end.setHours(23, 59, 59, 999);
+      const todayStr = getTodayInTimezone(timezone);
+      const start = new Date(`${todayStr}T00:00:00`);
+      const end = new Date(`${todayStr}T23:59:59.999`);
       return { start, end };
     }
 
     case 'yesterday': {
-      const start = new Date(now);
-      start.setDate(start.getDate() - 1);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setHours(23, 59, 59, 999);
+      const now = new Date();
+      const yesterdayDate = new Date(now);
+      yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+      const yesterdayStr = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(yesterdayDate);
+      const start = new Date(`${yesterdayStr}T00:00:00`);
+      const end = new Date(`${yesterdayStr}T23:59:59.999`);
       return { start, end };
     }
 
     case 'week': {
-      const start = new Date(now);
-      start.setDate(start.getDate() - 6);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(now);
-      end.setHours(23, 59, 59, 999);
+      const todayStr = getTodayInTimezone(timezone);
+      const end = new Date(`${todayStr}T23:59:59.999`);
+      const startDate_ = new Date(`${todayStr}T00:00:00`);
+      startDate_.setDate(startDate_.getDate() - 6);
+      const start = startDate_;
       return { start, end };
     }
 
     case 'month': {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      start.setHours(0, 0, 0, 0);
-      const end = new Date(now);
-      end.setHours(23, 59, 59, 999);
+      const todayStr = getTodayInTimezone(timezone);
+      const [y, m] = todayStr.split('-').map(Number);
+      const start = new Date(`${y}-${String(m).padStart(2, '0')}-01T00:00:00`);
+      const end = new Date(`${todayStr}T23:59:59.999`);
       return { start, end };
     }
 
@@ -89,13 +102,13 @@ export function buildShopifyDateQuery(start: Date, end: Date): string {
 
 export function formatPeriodLabel(period: Period, start: Date, end: Date): string {
   const fmt = (d: Date) =>
-    d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    d.toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   switch (period) {
-    case 'today': return 'Hoy';
-    case 'yesterday': return 'Ayer';
-    case 'week': return 'Últimos 7 días';
-    case 'month': return 'Este mes';
+    case 'today': return 'Today';
+    case 'yesterday': return 'Yesterday';
+    case 'week': return 'Last 7 days';
+    case 'month': return 'This month';
     case 'custom': return `${fmt(start)} - ${fmt(end)}`;
     default: return `${fmt(start)} - ${fmt(end)}`;
   }
@@ -103,13 +116,13 @@ export function formatPeriodLabel(period: Period, start: Date, end: Date): strin
 
 export function formatPreviousPeriodLabel(period: Period, start: Date, end: Date): string {
   const fmt = (d: Date) =>
-    d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    d.toLocaleDateString('en-US', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
   switch (period) {
-    case 'today': return 'Ayer';
-    case 'yesterday': return 'Anteayer';
-    case 'week': return 'Semana anterior';
-    case 'month': return 'Mes anterior';
+    case 'today': return 'Yesterday';
+    case 'yesterday': return 'Day before yesterday';
+    case 'week': return 'Previous week';
+    case 'month': return 'Previous month';
     default: return `${fmt(start)} - ${fmt(end)}`;
   }
 }
