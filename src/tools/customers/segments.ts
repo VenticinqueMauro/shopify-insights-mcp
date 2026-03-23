@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { CUSTOMERS_QUERY } from '../../shopify/queries/customers.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import {
@@ -56,10 +57,11 @@ interface SegmentData {
 
 export async function handleGetCustomerSegments(args: unknown): Promise<ToolResult> {
   try {
+    const shopContext = await getShopContext();
     const parsed = SegmentsSchema.parse(args);
     const { period, startDate, endDate } = parsed;
 
-    const { start, end } = getPeriodDates(period, startDate, endDate);
+    const { start, end } = getPeriodDates(period, startDate, endDate, shopContext.ianaTimezone);
     const queryStr = buildShopifyDateQuery(start, end);
 
     // Fetch customers and period orders in parallel
@@ -89,7 +91,7 @@ export async function handleGetCustomerSegments(args: unknown): Promise<ToolResu
     // Parse customers and determine segments
     const allCustomers = customers.map(({ node: c }) => {
       const totalSpent = parseFloat(c.amountSpent.amount);
-      const ordersCount = typeof c.numberOfOrders === 'string' ? parseInt(c.numberOfOrders, 10) : (c.numberOfOrders as unknown as number);
+      const ordersCount = parseInt(c.numberOfOrders, 10);
       return {
         id: c.id,
         name: `${c.firstName} ${c.lastName}`.trim() || c.email,
@@ -133,7 +135,7 @@ export async function handleGetCustomerSegments(args: unknown): Promise<ToolResu
       }
     }
 
-    const currency = allCustomers[0]?.currency ?? 'USD';
+    const currency = allCustomers[0]?.currency ?? shopContext.currencyCode;
     const periodLabel = formatPeriodLabel(period, start, end);
     const totalCustomers = allCustomers.length;
 

@@ -84,3 +84,8 @@ export type ToolResult = {
   content: Array<{ type: 'text'; text: string }>;
   isError?: boolean;
 };
+
+export interface ShopContext {
+  currencyCode: string;
+  ianaTimezone: string;
+}

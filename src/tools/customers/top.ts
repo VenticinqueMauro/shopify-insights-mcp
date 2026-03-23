@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { CUSTOMERS_QUERY } from '../../shopify/queries/customers.js';
 import { formatCurrency, formatNumber } from '../../utils/formatting.js';
 import { handleToolError } from '../../utils/errors.js';
@@ -35,6 +36,7 @@ const TopCustomersSchema = z.object({
 
 export async function handleGetTopCustomers(args: unknown): Promise<ToolResult> {
   try {
+    const shopContext = await getShopContext();
     const { sort_by, limit } = TopCustomersSchema.parse(args);
 
     const { edges: customers, truncated } = await fetchAllPages(
@@ -52,7 +54,7 @@ export async function handleGetTopCustomers(args: unknown): Promise<ToolResult> 
     // Parse and enrich
     const parsed = customers.map(({ node: c }) => {
       const totalSpent = parseFloat(c.amountSpent.amount);
-      const ordersCount = typeof c.numberOfOrders === 'string' ? parseInt(c.numberOfOrders, 10) : (c.numberOfOrders as unknown as number);
+      const ordersCount = parseInt(c.numberOfOrders, 10);
       const aov = ordersCount > 0 ? totalSpent / ordersCount : 0;
 
       return {
@@ -72,7 +74,7 @@ export async function handleGetTopCustomers(args: unknown): Promise<ToolResult> 
     });
 
     const top = parsed.slice(0, limit);
-    const currency = top[0]?.currency ?? 'USD';
+    const currency = top[0]?.currency ?? shopContext.currencyCode;
     const totalRevenueAll = parsed.reduce((s, c) => s + c.totalSpent, 0);
     const sortLabel = sort_by === 'total_spent' ? 'Total spent' : 'Order count';
 
