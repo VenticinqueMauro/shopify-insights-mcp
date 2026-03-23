@@ -75,9 +75,6 @@ async function runInit() {
     process.exit(1);
   }
 
-  const clientId = await ask('Client ID (optional, press Enter to skip)');
-  const clientSecret = await ask('Client Secret (optional, press Enter to skip)');
-
   // Write .env file
   const envPath = join(process.cwd(), '.env');
   const envExists = existsSync(envPath);
@@ -94,8 +91,6 @@ async function runInit() {
 
   let envContent = `SHOPIFY_SHOP_DOMAIN=${domain}\n`;
   envContent += `SHOPIFY_ACCESS_TOKEN=${token}\n`;
-  if (clientId) envContent += `SHOPIFY_CLIENT_ID=${clientId}\n`;
-  if (clientSecret) envContent += `SHOPIFY_CLIENT_SECRET=${clientSecret}\n`;
 
   writeFileSync(envPath, envContent);
   console.log('\n✅ .env file created successfully!');
