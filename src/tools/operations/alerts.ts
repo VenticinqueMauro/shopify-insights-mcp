@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import { buildShopifyDateQuery } from '../../utils/dates.js';
 import { formatCurrency, formatNumber } from '../../utils/formatting.js';
@@ -206,6 +207,7 @@ function generateOrderRecommendations(
 
 export async function handleGetOrderAlerts(args: unknown): Promise<ToolResult> {
   try {
+    const shopContext = await getShopContext();
     const parsed = OrderAlertsSchema.parse(args);
     const { pendingDaysThreshold, highValueThreshold, lookbackDays } = parsed;
 
@@ -263,7 +265,7 @@ export async function handleGetOrderAlerts(args: unknown): Promise<ToolResult> {
     }
 
     // High-value pending
-    text += `\n💎 HIGH-VALUE PENDING ORDERS (>${formatCurrency(highValueThreshold, 'USD')}): ${highValuePending.length}\n`;
+    text += `\n💎 HIGH-VALUE PENDING ORDERS (>${formatCurrency(highValueThreshold, shopContext.currencyCode)}): ${highValuePending.length}\n`;
     if (highValuePending.length > 0) {
       for (const o of highValuePending.slice(0, 10)) {
         text += `  • ${o.name} — ${formatCurrency(o.amount, o.currency)} — ${o.daysPending} day(s) pending\n`;

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import { buildShopifyDateQuery } from '../../utils/dates.js';
 import { formatCurrency, formatNumber, formatPercentage } from '../../utils/formatting.js';
@@ -103,6 +104,7 @@ function aggregateByProduct(orders: ShopifyOrder[]): Map<string, PeriodSales> {
 
 export async function handleGetTrendingProducts(args: unknown): Promise<ToolResult> {
   try {
+    const shopContext = await getShopContext();
     const { period, limit } = TrendingSchema.parse(args);
     const ranges = getPeriodRanges(period);
 
@@ -138,7 +140,7 @@ export async function handleGetTrendingProducts(args: unknown): Promise<ToolResu
       status: 'NEW' | 'RISING' | 'DECLINING' | 'STABLE' | 'STOPPED';
     }> = [];
 
-    let currency = 'USD';
+    let currency = shopContext.currencyCode;
     if (currentResult.edges.length > 0) {
       currency = currentResult.edges[0].node.totalPriceSet.shopMoney.currencyCode;
     }

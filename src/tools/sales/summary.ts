@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import {
   getPeriodDates,
@@ -55,10 +56,10 @@ const SalesSummarySchema = z.object({
   compareWithPrevious: z.boolean().default(true),
 });
 
-function calculateMetrics(orders: ShopifyOrder[]): SalesMetrics & { currency: string } {
+function calculateMetrics(orders: ShopifyOrder[], defaultCurrency: string): SalesMetrics & { currency: string } {
   let revenue = 0;
   let itemsSold = 0;
-  let currency = 'USD';
+  let currency = defaultCurrency;
 
   for (const { node: order } of orders) {
     revenue += parseFloat(order.totalPriceSet.shopMoney.amount);
@@ -89,16 +90,17 @@ export async function handleGetSalesSummary(args: unknown): Promise<{
   isError?: boolean;
 }> {
   try {
+    const shopContext = await getShopContext();
     const parsed = SalesSummarySchema.parse(args);
     const { period, startDate, endDate, compareWithPrevious } = parsed;
 
     // Get current period dates
-    const { start: currentStart, end: currentEnd } = getPeriodDates(period, startDate, endDate);
+    const { start: currentStart, end: currentEnd } = getPeriodDates(period, startDate, endDate, shopContext.ianaTimezone);
 
     // Fetch current period orders
     const { orders: currentOrders, truncated: currentTruncated } = await fetchOrdersForDateRange(currentStart, currentEnd);
     let anyTruncated = currentTruncated;
-    const currentMetrics = calculateMetrics(currentOrders);
+    const currentMetrics = calculateMetrics(currentOrders, shopContext.currencyCode);
     const currency = currentMetrics.currency;
 
     // Build period labels
@@ -117,7 +119,7 @@ export async function handleGetSalesSummary(args: unknown): Promise<{
       const { start: prevStart, end: prevEnd } = getPreviousPeriodDates(currentStart, currentEnd);
       const { orders: previousOrders, truncated: prevTruncated } = await fetchOrdersForDateRange(prevStart, prevEnd);
       if (prevTruncated) anyTruncated = true;
-      previousMetrics = calculateMetrics(previousOrders);
+      previousMetrics = calculateMetrics(previousOrders, shopContext.currencyCode);
 
       const prevLabel = formatPreviousPeriodLabel(period, prevStart, prevEnd);
 

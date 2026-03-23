@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import { buildShopifyDateQuery } from '../../utils/dates.js';
 import { formatCurrency, formatPercentage, formatNumber, formatCurrencyChange } from '../../utils/formatting.js';
@@ -43,10 +44,10 @@ interface PeriodMetrics {
   currency: string;
 }
 
-function calculateMetrics(orders: ShopifyOrder[]): PeriodMetrics {
+function calculateMetrics(orders: ShopifyOrder[], defaultCurrency: string): PeriodMetrics {
   let revenue = 0;
   let itemsSold = 0;
-  let currency = 'USD';
+  let currency = defaultCurrency;
 
   for (const { node: order } of orders) {
     revenue += parseFloat(order.totalPriceSet.shopMoney.amount);
@@ -79,6 +80,7 @@ export async function handleGetSalesComparison(args: unknown): Promise<{
   isError?: boolean;
 }> {
   try {
+    const shopContext = await getShopContext();
     const parsed = SalesComparisonSchema.parse(args);
     const { period1Start, period1End, period2Start, period2End, period1Label, period2Label } = parsed;
 
@@ -88,8 +90,8 @@ export async function handleGetSalesComparison(args: unknown): Promise<{
       fetchOrders(period2Start, period2End),
     ]);
 
-    const p1 = calculateMetrics(p1Result.orders);
-    const p2 = calculateMetrics(p2Result.orders);
+    const p1 = calculateMetrics(p1Result.orders, shopContext.currencyCode);
+    const p2 = calculateMetrics(p2Result.orders, shopContext.currencyCode);
     const anyTruncated = p1Result.truncated || p2Result.truncated;
     const currency = p1.currency;
 

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import {
   getPeriodDates,
@@ -65,10 +66,11 @@ interface ProductMetrics {
 
 export async function handleGetProductPerformance(args: unknown): Promise<ToolResult> {
   try {
+    const shopContext = await getShopContext();
     const parsed = PerformanceSchema.parse(args);
     const { period, startDate, endDate, sort_by, limit } = parsed;
 
-    const { start, end } = getPeriodDates(period, startDate, endDate);
+    const { start, end } = getPeriodDates(period, startDate, endDate, shopContext.ianaTimezone);
     const queryStr = buildShopifyDateQuery(start, end);
 
     const { edges: orders, truncated } = await fetchAllPages(
@@ -91,7 +93,7 @@ export async function handleGetProductPerformance(args: unknown): Promise<ToolRe
     const products = new Map<string, ProductMetrics>();
     let totalRevenue = 0;
     let totalUnits = 0;
-    let currency = 'USD';
+    let currency = shopContext.currencyCode;
 
     for (const { node: order } of orders) {
       currency = order.totalPriceSet.shopMoney.currencyCode;

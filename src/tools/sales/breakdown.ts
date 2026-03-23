@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import {
   getPeriodDates,
@@ -91,10 +92,11 @@ export async function handleGetRevenueBreakdown(args: unknown): Promise<{
   isError?: boolean;
 }> {
   try {
+    const shopContext = await getShopContext();
     const parsed = RevenueBreakdownSchema.parse(args);
     const { period, startDate, endDate, dimension, limit } = parsed;
 
-    const { start, end } = getPeriodDates(period, startDate, endDate);
+    const { start, end } = getPeriodDates(period, startDate, endDate, shopContext.ianaTimezone);
     const queryStr = buildShopifyDateQuery(start, end);
 
     const { edges: orders, truncated } = await fetchAllPages(
@@ -115,7 +117,7 @@ export async function handleGetRevenueBreakdown(args: unknown): Promise<{
 
     // Group by dimension
     const breakdown = new Map<string, BreakdownEntry>();
-    let currency = 'USD';
+    let currency = shopContext.currencyCode;
     let totalRevenue = 0;
 
     for (const { node: order } of orders) {

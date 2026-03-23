@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { fetchAllPages } from '../../shopify/client.js';
+import { getShopContext } from '../../shopify/shop.js';
 import { ORDERS_BY_DATE_RANGE } from '../../shopify/queries/orders.js';
 import { getPeriodDates, buildShopifyDateQuery, formatPeriodLabel, type Period } from '../../utils/dates.js';
 import { formatCurrency, formatPercentage, formatNumber } from '../../utils/formatting.js';
@@ -207,10 +208,11 @@ function generateFulfillmentRecommendations(signals: FulfillmentSignals): string
 
 export async function handleGetFulfillmentMetrics(args: unknown): Promise<ToolResult> {
   try {
+    const shopContext = await getShopContext();
     const parsed = FulfillmentMetricsSchema.parse(args);
     const { period, startDate, endDate } = parsed;
 
-    const { start, end } = getPeriodDates(period as Period, startDate, endDate);
+    const { start, end } = getPeriodDates(period as Period, startDate, endDate, shopContext.ianaTimezone);
     const queryStr = buildShopifyDateQuery(start, end);
     const { edges: orders, truncated } = await fetchAllPages(
       ORDERS_BY_DATE_RANGE,
@@ -229,7 +231,7 @@ export async function handleGetFulfillmentMetrics(args: unknown): Promise<ToolRe
       (sum, { node }) => sum + parseFloat(node.totalPriceSet.shopMoney.amount),
       0
     );
-    const currency = orders.length > 0 ? orders[0].node.totalPriceSet.shopMoney.currencyCode : 'USD';
+    const currency = orders.length > 0 ? orders[0].node.totalPriceSet.shopMoney.currencyCode : shopContext.currencyCode;
     const avgOrderValue = orders.length > 0 ? totalRevenue / orders.length : 0;
 
     let text = `📦 OPERATIONAL METRICS - ${periodLabel.toUpperCase()}\n`;
