@@ -16,6 +16,7 @@
     "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "setup": "node dist/cli/index.js init",
+    "test": "vitest run",
     "inspector": "npx @modelcontextprotocol/inspector node dist/index.js"
   },
   "keywords": [
@@ -46,8 +47,10 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^4.1.1",
     "ts-node": "^10.9.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.1"
   },
   "type": "module",
   "engines": {
