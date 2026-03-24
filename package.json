@@ -1,6 +1,6 @@
 {
   "name": "shopify-insights-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP Server for Shopify that delivers actionable business insights — sales comparisons, inventory alerts, customer segmentation, and operational metrics with automated recommendations.",
   "main": "dist/index.js",
   "bin": {
