@@ -104,6 +104,23 @@ Then ask Claude things like:
 - *"Are there any orders that need urgent attention?"*
 - *"How are my customers segmented?"*
 
+## Configuration
+
+### Required Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `SHOPIFY_SHOP_DOMAIN` | Your store domain (e.g., `my-store.myshopify.com`) |
+| `SHOPIFY_ACCESS_TOKEN` | Admin API access token (starts with `shpat_`) |
+
+### Optional Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SHOPIFY_TIMEZONE` | Auto-detected from store | IANA timezone override (e.g., `America/New_York`). Use when your Shopify store timezone setting is incorrect |
+| `SHOPIFY_API_VERSION` | `2025-01` | Shopify Admin API version |
+| `SHOPIFY_MAX_RECORDS` | `1000` | Maximum records fetched per tool call. Increase for large stores |
+
 ## Tools (10)
 
 ### Sales & Revenue
@@ -191,10 +208,11 @@ VS. PREVIOUS MONTH:
 ## Testing
 
 ```bash
-# Load environment variables
-export $(grep -v '^#' .env | xargs)
+# Run unit tests
+npm test
 
-# Test via JSON-RPC over stdio
+# Manual test via JSON-RPC over stdio
+export $(grep -v '^#' .env | xargs)
 echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_sales_summary","arguments":{"period":"month"}}}' | node dist/index.js
 
 # Or use MCP Inspector

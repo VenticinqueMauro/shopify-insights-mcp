@@ -13,7 +13,10 @@ export async function getShopContext(): Promise<ShopContext> {
       }
     }
   `);
-  _shopContext = data.shop;
+  const envTimezone = process.env.SHOPIFY_TIMEZONE;
+  _shopContext = envTimezone
+    ? { ...data.shop, ianaTimezone: envTimezone }
+    : data.shop;
   return _shopContext;
 }
 

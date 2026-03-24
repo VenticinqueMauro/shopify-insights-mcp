@@ -4,7 +4,7 @@
     <project>Shopify Insights MCP</project>
     <author>Mauro Venticinque</author>
     <date>2026-03-22</date>
-    <description>10 escenarios de evaluación para verificar los 10 tools del MVP</description>
+    <description>20 evaluation scenarios: 10 ARS/Spanish + 10 USD/English for all 10 tools</description>
   </metadata>
 
   <evaluation id="1">
@@ -141,5 +141,141 @@
       - Insights y recomendaciones operativas
     </expected_behavior>
     <success_criteria>Breakdowns con barras visuales, score de salud, insights y recomendaciones</success_criteria>
+  </evaluation>
+
+  <evaluation id="11">
+    <tool>get_sales_summary</tool>
+    <category>Sales</category>
+    <prompt>How are sales this month compared to last month?</prompt>
+    <expected_input>{"period": "month", "compareWithPrevious": true}</expected_input>
+    <expected_behavior>
+      - Returns revenue in USD with correct currency symbol
+      - Includes period-over-period comparison (%)
+      - Generates automatic insights about the trend
+      - Generates actionable recommendations
+    </expected_behavior>
+    <success_criteria>Output shows USD-formatted currency, metrics for current period, % comparison, insights and recommendations</success_criteria>
+  </evaluation>
+
+  <evaluation id="12">
+    <tool>get_sales_comparison</tool>
+    <category>Sales</category>
+    <prompt>Compare sales from the first half of March with the second half of February</prompt>
+    <expected_input>{"startDate1": "2026-03-01", "endDate1": "2026-03-15", "startDate2": "2026-02-15", "endDate2": "2026-02-28"}</expected_input>
+    <expected_behavior>
+      - Shows metrics for both periods side by side
+      - Calculates absolute and percentage differences
+      - Identifies which period performed better
+    </expected_behavior>
+    <success_criteria>Two periods compared with metrics, differences, and direction of change in USD</success_criteria>
+  </evaluation>
+
+  <evaluation id="13">
+    <tool>get_revenue_breakdown</tool>
+    <category>Sales</category>
+    <prompt>What are my top-selling products this month by revenue?</prompt>
+    <expected_input>{"period": "month", "dimension": "product"}</expected_input>
+    <expected_behavior>
+      - Breaks down revenue by product
+      - Sorted by revenue descending
+      - Shows each product's contribution percentage
+    </expected_behavior>
+    <success_criteria>Product list sorted by revenue with % contribution to total, in USD</success_criteria>
+  </evaluation>
+
+  <evaluation id="14">
+    <tool>get_product_performance</tool>
+    <category>Products</category>
+    <prompt>Give me a ranking of my products by units sold in the last 7 days</prompt>
+    <expected_input>{"period": "week", "metric": "units", "limit": 10}</expected_input>
+    <expected_behavior>
+      - Product ranking by units sold
+      - Includes associated revenue per product
+      - Limited to top N products
+    </expected_behavior>
+    <success_criteria>Ordered product list with units sold and revenue in USD, limited to requested top</success_criteria>
+  </evaluation>
+
+  <evaluation id="15">
+    <tool>get_inventory_alerts</tool>
+    <category>Products</category>
+    <prompt>Do I have any products with stock issues?</prompt>
+    <expected_input>{"criticalThreshold": 10}</expected_input>
+    <expected_behavior>
+      - Identifies out-of-stock products (0 units)
+      - Identifies low-stock products (below threshold)
+      - Shows summary with counts per alert category
+      - Generates restocking recommendations
+    </expected_behavior>
+    <success_criteria>Alerts classified by severity (out-of-stock, low, overstock) with recommendations</success_criteria>
+  </evaluation>
+
+  <evaluation id="16">
+    <tool>get_trending_products</tool>
+    <category>Products</category>
+    <prompt>Which products are trending this week?</prompt>
+    <expected_input>{"period": "week"}</expected_input>
+    <expected_behavior>
+      - Compares current period sales vs previous period
+      - Classifies products as rising, falling, or stable
+      - Shows growth/decline % per product
+    </expected_behavior>
+    <success_criteria>Products classified by trend with % change vs previous period</success_criteria>
+  </evaluation>
+
+  <evaluation id="17">
+    <tool>get_customer_segments</tool>
+    <category>Customers</category>
+    <prompt>How are my customers segmented? Are any at risk?</prompt>
+    <expected_input>{"vipThreshold": 500, "inactiveDays": 30}</expected_input>
+    <expected_behavior>
+      - Segments customers into: VIP, Loyal, Returning, New, Inactive
+      - Shows count and value per segment
+      - Identifies inactive VIP customers (at risk)
+      - Generates insights and recommendations per segment
+    </expected_behavior>
+    <success_criteria>Segments with counts, values, and at-risk customer alerts using USD thresholds</success_criteria>
+  </evaluation>
+
+  <evaluation id="18">
+    <tool>get_top_customers</tool>
+    <category>Customers</category>
+    <prompt>Who are my best customers by total spend?</prompt>
+    <expected_input>{"metric": "spent", "limit": 5}</expected_input>
+    <expected_behavior>
+      - Customer ranking by total spend (lifetime value)
+      - Includes name, email, order count, and total amount
+      - Limited to top N requested
+    </expected_behavior>
+    <success_criteria>Ordered customer list with name, orders, and LTV in USD</success_criteria>
+  </evaluation>
+
+  <evaluation id="19">
+    <tool>get_order_alerts</tool>
+    <category>Operations</category>
+    <prompt>Are there any orders that need urgent attention?</prompt>
+    <expected_input>{"pendingDaysThreshold": 3, "highValueThreshold": 200, "lookbackDays": 30}</expected_input>
+    <expected_behavior>
+      - Identifies orders with delayed fulfillment (over N days)
+      - Detects financial issues (refunds, cancellations)
+      - Flags high-value orders pending shipment
+      - Generates operational insights and recommendations
+    </expected_behavior>
+    <success_criteria>Alerts in 3 categories with insights and recommendations, using USD-appropriate highValueThreshold of 200</success_criteria>
+  </evaluation>
+
+  <evaluation id="20">
+    <tool>get_fulfillment_metrics</tool>
+    <category>Operations</category>
+    <prompt>What is the operational status of my orders this month?</prompt>
+    <expected_input>{"period": "month"}</expected_input>
+    <expected_behavior>
+      - Breakdown by fulfillment status (shipped, unshipped, partial)
+      - Breakdown by financial status (paid, pending, refunded)
+      - Operational health score (0-100)
+      - Visual proportion bars per status
+      - Operational insights and recommendations
+    </expected_behavior>
+    <success_criteria>Breakdowns with visual bars, health score, insights, and recommendations</success_criteria>
   </evaluation>
 </evaluations>
